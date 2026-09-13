@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { LocationsModule } from './locations/locations.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { LocationsModule } from './locations/locations.module';
     AuthModule,
     CategoriesModule,
     LocationsModule,
+    SuppliersModule,
   ],
   controllers: [AppController],
 })
