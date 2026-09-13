@@ -13,6 +13,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:seed": "tsx prisma/seed.ts",
     "postinstall": "prisma skills sync || exit 0"
   },
   "keywords": [],
@@ -47,6 +48,7 @@
     "@types/pg": "^8.23.1",
     "prisma": "^7.10.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   }
 }

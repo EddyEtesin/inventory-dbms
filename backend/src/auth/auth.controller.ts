@@ -9,6 +9,8 @@ import {
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { RequirePermissions } from './decorators/permissions.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
@@ -39,6 +41,17 @@ export class AuthController {
       email: request.user.email,
       organizationId: request.user.orgId,
       roleId: request.user.roleId,
+    };
+  }
+
+  @Get('rbac-test')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('organization.update')
+  testRbac(@Req() request: AuthenticatedRequest) {
+    return {
+      status: 'ok',
+      message: 'You have organization.update permission.',
+      user: request.user,
     };
   }
 }
