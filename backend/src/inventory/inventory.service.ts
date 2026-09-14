@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TransactionType, } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -239,18 +239,25 @@ export class InventoryService {
     });
   }
 
-  async createOpeningBalance(
+    async createOpeningBalance(
     orgId: string,
     itemId: string,
     locationId: string,
     quantity: number,
     performedBy: string,
+    idempotencyKey: string,
     reference?: string,
     notes?: string,
   ) {
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
         'Opening balance quantity must be a positive whole number.',
+      );
+    }
+
+    if (!idempotencyKey || !idempotencyKey.trim()) {
+      throw new ConflictException(
+        'An idempotency key is required for opening balances.',
       );
     }
 
@@ -303,69 +310,169 @@ export class InventoryService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const existingBalance = await tx.itemLocation.findUnique({
-        where: {
-          orgId_itemId_locationId: {
-            orgId,
-            itemId,
-            locationId,
-          },
-        },
-      });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existingTransaction =
+          await tx.stockTransaction.findFirst({
+            where: {
+              orgId,
+              idempotencyKey,
+            },
+          });
 
-      if (existingBalance && existingBalance.quantity !== 0) {
-        throw new ConflictException(
-          'Opening balance can only be created when the current inventory balance is zero.',
-        );
-      }
+        if (existingTransaction) {
+          const sameRequest =
+            existingTransaction.itemId === itemId &&
+            existingTransaction.locationId === locationId &&
+            existingTransaction.quantity === quantity &&
+            existingTransaction.txnType === 'opening_balance' &&
+            existingTransaction.reference === reference &&
+            existingTransaction.notes === notes;
 
-      const balance = existingBalance
-        ? existingBalance
-        : await tx.itemLocation.create({
+          if (!sameRequest) {
+            throw new ConflictException(
+              'This idempotency key has already been used for a different opening balance.',
+            );
+          }
+
+          return {
+            balance: await tx.itemLocation.findUnique({
+              where: {
+                orgId_itemId_locationId: {
+                  orgId,
+                  itemId: existingTransaction.itemId,
+                  locationId: existingTransaction.locationId,
+                },
+              },
+            }),
+            transaction: existingTransaction,
+            replayed: true,
+          };
+        }
+
+        const existingBalance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
+              },
+            },
+          });
+
+        if (
+          existingBalance &&
+          existingBalance.quantity !== 0
+        ) {
+          throw new ConflictException(
+            'Opening balance can only be created when the current inventory balance is zero.',
+          );
+        }
+
+        const balance = existingBalance
+          ? existingBalance
+          : await tx.itemLocation.create({
+              data: {
+                orgId,
+                itemId,
+                locationId,
+                quantity: 0,
+              },
+            });
+
+        const transaction =
+          await tx.stockTransaction.create({
             data: {
               orgId,
               itemId,
               locationId,
-              quantity: 0,
+              txnType: 'opening_balance',
+              quantity,
+              performedBy,
+              idempotencyKey,
+              reference,
+              notes,
             },
           });
 
-      const transaction = await tx.stockTransaction.create({
-        data: {
-          orgId,
-          itemId,
-          locationId,
-          txnType: 'opening_balance',
-          quantity,
-          performedBy,
-          reference,
-          notes,
-        },
-      });
+        const updatedBalance =
+          await tx.itemLocation.update({
+            where: {
+              id: balance.id,
+            },
+            data: {
+              quantity: {
+                increment: quantity,
+              },
+            },
+          });
 
-      const updatedBalance = await tx.itemLocation.update({
-        where: {
-          id: balance.id,
-        },
-        data: {
-          quantity: {
-            increment: quantity,
-          },
-        },
+        return {
+          balance: updatedBalance,
+          transaction,
+          replayed: false,
+        };
       });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const existingTransaction =
+        await this.prisma.stockTransaction.findFirst({
+          where: {
+            orgId,
+            idempotencyKey,
+          },
+        });
+
+      if (!existingTransaction) {
+        throw error;
+      }
+
+      const sameRequest =
+        existingTransaction.itemId === itemId &&
+        existingTransaction.locationId === locationId &&
+        existingTransaction.quantity === quantity &&
+        existingTransaction.txnType === 'opening_balance' &&
+        existingTransaction.reference === reference &&
+        existingTransaction.notes === notes;
+
+      if (!sameRequest) {
+        throw new ConflictException(
+          'This idempotency key has already been used for a different opening balance.',
+        );
+      }
 
       return {
-        balance: updatedBalance,
-        transaction,
+        balance: await this.prisma.itemLocation.findUnique({
+          where: {
+            orgId_itemId_locationId: {
+              orgId,
+              itemId: existingTransaction.itemId,
+              locationId: existingTransaction.locationId,
+            },
+          },
+        }),
+        transaction: existingTransaction,
+        replayed: true,
       };
-    });
+    }
   }
 
-  async getItemLocationTransactions(
+      async getItemLocationTransactions(
     orgId: string,
     itemId: string,
     locationId: string,
+    filters?: {
+      txnType?: TransactionType;
+      reference?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      pageSize?: number;
+    },
   ) {
     const balance = await this.prisma.itemLocation.findFirst({
       where: {
@@ -379,6 +486,7 @@ export class InventoryService {
             id: true,
             sku: true,
             name: true,
+            unitOfMeasure: true,
           },
         },
         location: {
@@ -397,27 +505,114 @@ export class InventoryService {
       );
     }
 
-    return this.prisma.stockTransaction.findMany({
-      where: {
-        orgId,
-        itemId,
-        locationId,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
-  }
+    const page = filters?.page ?? 1;
+    const pageSize = filters?.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
 
+    if (filters?.fromDate && filters?.toDate) {
+      const from = new Date(filters.fromDate);
+      const to = new Date(filters.toDate);
+
+      if (from > to) {
+        throw new ConflictException(
+          'fromDate cannot be later than toDate.',
+        );
+      }
+    }
+
+    const createdAtFilter =
+      filters?.fromDate || filters?.toDate
+        ? {
+            ...(filters.fromDate
+              ? {
+                  gte: new Date(filters.fromDate),
+                }
+              : {}),
+            ...(filters.toDate
+              ? {
+                  lt: new Date(
+                    new Date(filters.toDate).getTime() +
+                      24 * 60 * 60 * 1000,
+                  ),
+                }
+              : {}),
+          }
+        : undefined;
+
+    const where: Prisma.StockTransactionWhereInput = {
+      orgId,
+      itemId,
+      locationId,
+
+      ...(filters?.txnType
+        ? {
+            txnType: filters.txnType,
+          }
+        : {}),
+
+      ...(filters?.reference
+        ? {
+            reference: {
+              contains: filters.reference,
+              mode: 'insensitive',
+            },
+          }
+        : {}),
+
+      ...(createdAtFilter
+        ? {
+            createdAt: createdAtFilter,
+          }
+        : {}),
+    };
+
+    const [transactions, total] =
+      await this.prisma.$transaction([
+        this.prisma.stockTransaction.findMany({
+          where,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: pageSize,
+        }),
+
+        this.prisma.stockTransaction.count({
+          where,
+        }),
+      ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    return {
+      summary: {
+        item: balance.item,
+        location: balance.location,
+        currentQuantity: balance.quantity,
+        transactionCount: total,
+      },
+
+      data: transactions,
+
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
+  }
     async receiveStock(
-    orgId: string,
-    itemId: string,
-    locationId: string,
-    quantity: number,
-    performedBy: string,
-    idempotencyKey: string,
-    reference?: string,
-    notes?: string,
+      orgId: string,
+      itemId: string,
+      locationId: string,
+      quantity: number,
+      performedBy: string,
+      idempotencyKey: string,
+      reference?: string,
+      notes?: string,
   ) {
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
@@ -1395,6 +1590,88 @@ export class InventoryService {
       mismatches: mismatches.length,
       negativeBalances: negativeBalances.length,
       results,
+    };
+  }
+
+    async getInventorySummary(
+    orgId: string,
+    itemId: string,
+  ) {
+    const item = await this.prisma.item.findFirst({
+      where: {
+        orgId,
+        id: itemId,
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        unitOfMeasure: true,
+        reorderLevel: true,
+        status: true,
+        unitPrice: true,
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException(
+        'Item not found in this organization.',
+      );
+    }
+
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+        itemId,
+      },
+      include: {
+        location: {
+          select: {
+            id: true,
+            name: true,
+            locationType: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        location: {
+          name: 'asc',
+        },
+      },
+    });
+
+    const totalQuantity = balances.reduce(
+      (total, balance) => total + balance.quantity,
+      0,
+    );
+
+    let stockStatus = 'IN_STOCK';
+
+    if (totalQuantity === 0) {
+      stockStatus = 'OUT_OF_STOCK';
+    } else if (totalQuantity <= item.reorderLevel) {
+      stockStatus = 'LOW_STOCK';
+    }
+
+    return {
+      item: {
+        id: item.id,
+        sku: item.sku,
+        name: item.name,
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: item.unitPrice,
+        reorderLevel: item.reorderLevel,
+        status: item.status,
+      },
+      totalQuantity,
+      stockStatus,
+      locations: balances.map((balance) => ({
+        location: balance.location,
+        quantity: balance.quantity,
+        reorderLevel:
+          balance.reorderLevel ?? item.reorderLevel,
+      })),
     };
   }
 }

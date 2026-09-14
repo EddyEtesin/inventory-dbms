@@ -1,22 +1,27 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
+
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+
 import { InventoryService } from './inventory.service';
-import { Body } from '@nestjs/common';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { IssueStockDto } from './dto/issue-stock.dto';
 import { TransferStockDto } from './dto/transfer-stock.dto';
+import { OpeningBalanceDto } from './dto/opening-balance.dto';
+import { StockHistoryDto } from './dto/stock-history.dto';
 
 interface AuthenticatedRequest extends Request {
   user: JwtPayload;
@@ -82,39 +87,43 @@ export class InventoryController {
   }
 
   @Post('items/:itemId/locations/:locationId/opening-balance')
-  @RequirePermissions('item.update')
+  @RequirePermissions('stock.receive')
   createOpeningBalance(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
     @Param('locationId') locationId: string,
+    @Body() dto: OpeningBalanceDto,
   ) {
     return this.inventoryService.createOpeningBalance(
       request.user.orgId,
       itemId,
       locationId,
-      100,
+      dto.quantity,
       request.user.sub,
-      'OPENING-001',
-      'Initial opening stock',
+      dto.idempotencyKey,
+      dto.reference,
+      dto.notes,
     );
   }
 
   @Get('items/:itemId/locations/:locationId/transactions')
-  @RequirePermissions('item.view')
+  @RequirePermissions('stock.view_history')
   getItemLocationTransactions(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
     @Param('locationId') locationId: string,
+    @Query() filters: StockHistoryDto,
   ) {
     return this.inventoryService.getItemLocationTransactions(
       request.user.orgId,
       itemId,
       locationId,
+      filters,
     );
   }
 
   @Post('items/:itemId/locations/:locationId/receive')
-  @RequirePermissions('item.update')
+  @RequirePermissions('stock.receive')
   receiveStock(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
@@ -134,7 +143,7 @@ export class InventoryController {
   }
 
   @Post('items/:itemId/locations/:locationId/adjust')
-  @RequirePermissions('item.update')
+  @RequirePermissions('stock.adjust')
   adjustStock(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
@@ -152,8 +161,8 @@ export class InventoryController {
     );
   }
 
-    @Post('items/:itemId/locations/:locationId/issue')
-  @RequirePermissions('item.update')
+  @Post('items/:itemId/locations/:locationId/issue')
+  @RequirePermissions('stock.issue')
   issueStock(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
@@ -173,7 +182,7 @@ export class InventoryController {
   }
 
   @Post('items/:itemId/transfer')
-  @RequirePermissions('item.update')
+  @RequirePermissions('stock.transfer')
   transferStock(
     @Req() request: AuthenticatedRequest,
     @Param('itemId') itemId: string,
@@ -199,6 +208,18 @@ export class InventoryController {
   ) {
     return this.inventoryService.reconcileInventory(
       request.user.orgId,
+    );
+  }
+
+    @Get('items/:itemId/summary')
+  @RequirePermissions('item.view')
+  getInventorySummary(
+    @Req() request: AuthenticatedRequest,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.inventoryService.getInventorySummary(
+      request.user.orgId,
+      itemId,
     );
   }
 }
