@@ -311,6 +311,7 @@ model StockTransaction {
   txnType     TransactionType @map("txn_type")
   quantity    Int
   reference   String?
+  idempotencyKey String?      
   transferId  String?         @map("transfer_id") @db.Uuid
   performedBy String          @map("performed_by") @db.Uuid
   notes       String?
@@ -329,6 +330,7 @@ model StockTransaction {
   @@index([orgId, performedBy])
   @@index([orgId, transferId])
   @@map("stock_transactions")
+  @@unique([orgId, idempotencyKey])
 }
 
 model ItemAttribute {
