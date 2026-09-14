@@ -1930,4 +1930,383 @@ export class InventoryService {
         stockStatus: 'OUT_OF_STOCK',
       }));
   }
+
+      async getInventoryActivity(
+    orgId: string,
+    itemId?: string,
+    locationId?: string,
+    fromDate?: string,
+    toDate?: string,
+  ) {
+    if (fromDate && toDate) {
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+
+      if (from > to) {
+        throw new ConflictException(
+          'fromDate cannot be later than toDate.',
+        );
+      }
+    }
+
+    const createdAtFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate
+              ? {
+                  gte: new Date(fromDate),
+                }
+              : {}),
+            ...(toDate
+              ? {
+                  lt: new Date(
+                    new Date(toDate).getTime() +
+                      24 * 60 * 60 * 1000,
+                  ),
+                }
+              : {}),
+          }
+        : undefined;
+
+    const transactions =
+      await this.prisma.stockTransaction.findMany({
+        where: {
+          orgId,
+
+          ...(itemId
+            ? {
+                itemId,
+              }
+            : {}),
+
+          ...(locationId
+            ? {
+                locationId,
+              }
+            : {}),
+
+          ...(createdAtFilter
+            ? {
+                createdAt: createdAtFilter,
+              }
+            : {}),
+        },
+        select: {
+          txnType: true,
+          quantity: true,
+        },
+      });
+
+    let openingStock = 0;
+    let supplierReceipts = 0;
+    let issued = 0;
+    let transferredIn = 0;
+    let transferredOut = 0;
+    let adjustments = 0;
+
+    for (const transaction of transactions) {
+      switch (transaction.txnType) {
+        case 'opening_balance':
+          openingStock += transaction.quantity;
+          break;
+
+        case 'receive':
+          supplierReceipts += transaction.quantity;
+          break;
+
+        case 'issue':
+          issued += Math.abs(transaction.quantity);
+          break;
+
+        case 'transfer':
+          if (transaction.quantity > 0) {
+            transferredIn += transaction.quantity;
+          } else {
+            transferredOut += Math.abs(transaction.quantity);
+          }
+          break;
+
+        case 'adjustment':
+          adjustments += transaction.quantity;
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    return {
+      filters: {
+        itemId: itemId ?? null,
+        locationId: locationId ?? null,
+        fromDate: fromDate ?? null,
+        toDate: toDate ?? null,
+      },
+      totals: {
+        openingStock,
+        supplierReceipts,
+        issued,
+        transferredIn,
+        transferredOut,
+        adjustments,
+        transactionCount: transactions.length,
+      },
+    };
+  }
+
+      async getReorderAnalysis(orgId: string) {
+    const items = await this.prisma.item.findMany({
+      where: {
+        orgId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        unitOfMeasure: true,
+        unitPrice: true,
+        reorderLevel: true,
+      },
+    });
+
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+      },
+    });
+
+    const quantityByItem = new Map<string, number>();
+
+    for (const balance of balances) {
+      quantityByItem.set(
+        balance.itemId,
+        (quantityByItem.get(balance.itemId) ?? 0) +
+          balance.quantity,
+      );
+    }
+
+    return items
+      .map((item) => {
+        const currentQuantity =
+          quantityByItem.get(item.id) ?? 0;
+
+        const suggestedOrderQuantity = Math.max(
+          item.reorderLevel - currentQuantity,
+          0,
+        );
+
+        const suggestedOrderValue =
+          suggestedOrderQuantity * Number(item.unitPrice);
+
+        return {
+          id: item.id,
+          sku: item.sku,
+          name: item.name,
+          unitOfMeasure: item.unitOfMeasure,
+          unitPrice: item.unitPrice,
+          reorderLevel: item.reorderLevel,
+          currentQuantity,
+          suggestedOrderQuantity,
+          suggestedOrderValue,
+          stockStatus:
+            currentQuantity === 0
+              ? 'OUT_OF_STOCK'
+              : currentQuantity <= item.reorderLevel
+                ? 'LOW_STOCK'
+                : 'IN_STOCK',
+        };
+      })
+      .filter(
+        (item) => item.suggestedOrderQuantity > 0,
+      );
+  }
+
+    async getInventoryAlerts(orgId: string) {
+    const items = await this.prisma.item.findMany({
+      where: {
+        orgId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        unitOfMeasure: true,
+        unitPrice: true,
+        reorderLevel: true,
+      },
+    });
+
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+      },
+    });
+
+    const quantityByItem = new Map<string, number>();
+
+    for (const balance of balances) {
+      quantityByItem.set(
+        balance.itemId,
+        (quantityByItem.get(balance.itemId) ?? 0) +
+          balance.quantity,
+      );
+    }
+
+    return items
+      .map((item) => {
+        const currentQuantity =
+          quantityByItem.get(item.id) ?? 0;
+
+        let alertType: 'OUT_OF_STOCK' | 'LOW_STOCK' | null =
+          null;
+
+        if (currentQuantity === 0) {
+          alertType = 'OUT_OF_STOCK';
+        } else if (currentQuantity <= item.reorderLevel) {
+          alertType = 'LOW_STOCK';
+        }
+
+        const suggestedOrderQuantity =
+          Math.max(
+            item.reorderLevel - currentQuantity,
+            0,
+          );
+
+        const suggestedOrderValue =
+          suggestedOrderQuantity *
+          Number(item.unitPrice);
+
+        return {
+          id: item.id,
+          sku: item.sku,
+          name: item.name,
+          unitOfMeasure: item.unitOfMeasure,
+          unitPrice: item.unitPrice,
+          reorderLevel: item.reorderLevel,
+          currentQuantity,
+          alertType,
+          suggestedOrderQuantity,
+          suggestedOrderValue,
+        };
+      })
+      .filter((item) => item.alertType !== null)
+      .sort((a, b) => {
+        if (a.alertType === 'OUT_OF_STOCK' &&
+            b.alertType !== 'OUT_OF_STOCK') {
+          return -1;
+        }
+
+        if (a.alertType !== 'OUT_OF_STOCK' &&
+            b.alertType === 'OUT_OF_STOCK') {
+          return 1;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+    async getLocationReorderAnalysis(orgId: string) {
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+      },
+      include: {
+        item: {
+          select: {
+            id: true,
+            sku: true,
+            name: true,
+            unitOfMeasure: true,
+            unitPrice: true,
+            reorderLevel: true,
+            status: true,
+          },
+        },
+        location: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: [
+        {
+          item: {
+            name: 'asc',
+          },
+        },
+        {
+          location: {
+            name: 'asc',
+          },
+        },
+      ],
+    });
+
+    return balances
+      .filter((balance) => balance.item.status === 'active')
+      .map((balance) => {
+        const effectiveReorderLevel =
+          balance.reorderLevel ??
+          balance.item.reorderLevel;
+
+        const currentQuantity = balance.quantity;
+
+        const suggestedOrderQuantity = Math.max(
+          effectiveReorderLevel - currentQuantity,
+          0,
+        );
+
+        const suggestedOrderValue =
+          suggestedOrderQuantity *
+          Number(balance.item.unitPrice);
+
+        let stockStatus:
+          | 'OUT_OF_STOCK'
+          | 'LOW_STOCK'
+          | 'IN_STOCK';
+
+        if (currentQuantity === 0) {
+          stockStatus = 'OUT_OF_STOCK';
+        } else if (currentQuantity <= effectiveReorderLevel) {
+          stockStatus = 'LOW_STOCK';
+        } else {
+          stockStatus = 'IN_STOCK';
+        }
+
+        return {
+          item: {
+            id: balance.item.id,
+            sku: balance.item.sku,
+            name: balance.item.name,
+            unitOfMeasure: balance.item.unitOfMeasure,
+            unitPrice: balance.item.unitPrice,
+          },
+          location: {
+            id: balance.location.id,
+            name: balance.location.name,
+            status: balance.location.status,
+          },
+          currentQuantity,
+          reorderLevel: effectiveReorderLevel,
+          suggestedOrderQuantity,
+          suggestedOrderValue,
+          stockStatus,
+        };
+      })
+      .filter(
+        (entry) => entry.stockStatus !== 'IN_STOCK',
+      );
+  }
 }

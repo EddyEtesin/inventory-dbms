@@ -22,6 +22,7 @@ import { IssueStockDto } from './dto/issue-stock.dto';
 import { TransferStockDto } from './dto/transfer-stock.dto';
 import { OpeningBalanceDto } from './dto/opening-balance.dto';
 import { StockHistoryDto } from './dto/stock-history.dto';
+import { InventoryActivityDto } from './dto/inventory-activity.dto';
 
 interface AuthenticatedRequest extends Request {
   user: JwtPayload;
@@ -249,6 +250,51 @@ export class InventoryController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.inventoryService.getOutOfStockItems(
+      request.user.orgId,
+    );
+  }
+
+  @Get('activity')
+  @RequirePermissions('item.view')
+  getInventoryActivity(
+    @Req() request: AuthenticatedRequest,
+    @Query() filters: InventoryActivityDto,
+  ) {
+    return this.inventoryService.getInventoryActivity(
+      request.user.orgId,
+      filters.itemId,
+      filters.locationId,
+      filters.fromDate,
+      filters.toDate,
+    );
+  }
+
+  @Get('reorder-analysis')
+  @RequirePermissions('item.view')
+  getReorderAnalysis(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getReorderAnalysis(
+      request.user.orgId,
+    );
+  }
+
+  @Get('alerts')
+  @RequirePermissions('item.view')
+  getInventoryAlerts(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getInventoryAlerts(
+      request.user.orgId,
+    );
+  }
+
+    @Get('location-reorder-analysis')
+  @RequirePermissions('item.view')
+  getLocationReorderAnalysis(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getLocationReorderAnalysis(
       request.user.orgId,
     );
   }
