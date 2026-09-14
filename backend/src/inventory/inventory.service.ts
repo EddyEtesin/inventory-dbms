@@ -1674,4 +1674,260 @@ export class InventoryService {
       })),
     };
   }
+
+    async getOrganizationInventorySummary(orgId: string) {
+    const [items, balances] = await this.prisma.$transaction([
+      this.prisma.item.findMany({
+        where: {
+          orgId,
+          status: 'active',
+        },
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          unitOfMeasure: true,
+          unitPrice: true,
+          reorderLevel: true,
+        },
+      }),
+
+      this.prisma.itemLocation.findMany({
+        where: {
+          orgId,
+        },
+        select: {
+          itemId: true,
+          locationId: true,
+          quantity: true,
+          reorderLevel: true,
+          location: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const quantityByItem = new Map<string, number>();
+
+    for (const balance of balances) {
+      quantityByItem.set(
+        balance.itemId,
+        (quantityByItem.get(balance.itemId) ?? 0) +
+          balance.quantity,
+      );
+    }
+
+    let totalUnitsInStock = 0;
+    let totalInventoryValue = 0;
+    let lowStockItems = 0;
+    let outOfStockItems = 0;
+
+    const itemSummaries = items.map((item) => {
+      const totalQuantity =
+        quantityByItem.get(item.id) ?? 0;
+
+      const inventoryValue =
+        totalQuantity * Number(item.unitPrice);
+
+      totalUnitsInStock += totalQuantity;
+      totalInventoryValue += inventoryValue;
+
+      if (totalQuantity === 0) {
+        outOfStockItems++;
+      } else if (totalQuantity <= item.reorderLevel) {
+        lowStockItems++;
+      }
+
+      return {
+        id: item.id,
+        sku: item.sku,
+        name: item.name,
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: item.unitPrice,
+        reorderLevel: item.reorderLevel,
+        totalQuantity,
+        inventoryValue,
+        stockStatus:
+          totalQuantity === 0
+            ? 'OUT_OF_STOCK'
+            : totalQuantity <= item.reorderLevel
+              ? 'LOW_STOCK'
+              : 'IN_STOCK',
+      };
+    });
+
+    const locationSummaries = balances.reduce(
+      (result, balance) => {
+        const existing = result.get(balance.locationId);
+
+        if (existing) {
+          existing.totalQuantity += balance.quantity;
+        } else {
+          result.set(balance.locationId, {
+            id: balance.location.id,
+            name: balance.location.name,
+            status: balance.location.status,
+            totalQuantity: balance.quantity,
+          });
+        }
+
+        return result;
+      },
+      new Map<
+        string,
+        {
+          id: string;
+          name: string;
+          status: string;
+          totalQuantity: number;
+        }
+      >(),
+    );
+
+    return {
+      totals: {
+        activeItems: items.length,
+        totalUnitsInStock,
+        lowStockItems,
+        outOfStockItems,
+        totalInventoryValue,
+      },
+      items: itemSummaries,
+      locations: Array.from(locationSummaries.values()).sort(
+        (a, b) => a.name.localeCompare(b.name),
+      ),
+    };
+  }
+
+    async getLowStockItems(orgId: string) {
+    const items = await this.prisma.item.findMany({
+      where: {
+        orgId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        unitOfMeasure: true,
+        unitPrice: true,
+        reorderLevel: true,
+      },
+    });
+
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+        locationId: true,
+        location: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const quantityByItem = new Map<string, number>();
+
+    for (const balance of balances) {
+      quantityByItem.set(
+        balance.itemId,
+        (quantityByItem.get(balance.itemId) ?? 0) +
+          balance.quantity,
+      );
+    }
+
+    return items
+      .map((item) => {
+        const totalQuantity =
+          quantityByItem.get(item.id) ?? 0;
+
+        return {
+          id: item.id,
+          sku: item.sku,
+          name: item.name,
+          unitOfMeasure: item.unitOfMeasure,
+          unitPrice: item.unitPrice,
+          reorderLevel: item.reorderLevel,
+          totalQuantity,
+          stockStatus:
+            totalQuantity === 0
+              ? 'OUT_OF_STOCK'
+              : totalQuantity <= item.reorderLevel
+                ? 'LOW_STOCK'
+                : 'IN_STOCK',
+        };
+      })
+      .filter(
+        (item) =>
+          item.stockStatus === 'LOW_STOCK',
+      );
+  }
+
+  async getOutOfStockItems(orgId: string) {
+    const items = await this.prisma.item.findMany({
+      where: {
+        orgId,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        unitOfMeasure: true,
+        unitPrice: true,
+        reorderLevel: true,
+      },
+    });
+
+    const balances = await this.prisma.itemLocation.findMany({
+      where: {
+        orgId,
+      },
+      select: {
+        itemId: true,
+        quantity: true,
+      },
+    });
+
+    const quantityByItem = new Map<string, number>();
+
+    for (const balance of balances) {
+      quantityByItem.set(
+        balance.itemId,
+        (quantityByItem.get(balance.itemId) ?? 0) +
+          balance.quantity,
+      );
+    }
+
+    return items
+      .map((item) => ({
+        id: item.id,
+        sku: item.sku,
+        name: item.name,
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: item.unitPrice,
+        reorderLevel: item.reorderLevel,
+        totalQuantity:
+          quantityByItem.get(item.id) ?? 0,
+      }))
+      .filter(
+        (item) => item.totalQuantity === 0,
+      )
+      .map((item) => ({
+        ...item,
+        stockStatus: 'OUT_OF_STOCK',
+      }));
+  }
 }

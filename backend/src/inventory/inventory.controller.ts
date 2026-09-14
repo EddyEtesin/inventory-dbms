@@ -222,4 +222,34 @@ export class InventoryController {
       itemId,
     );
   }
+
+  @Get('summary')
+  @RequirePermissions('item.view')
+  getOrganizationInventorySummary(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getOrganizationInventorySummary(
+      request.user.orgId,
+    );
+  }
+
+  @Get('low-stock')
+  @RequirePermissions('item.view')
+  getLowStockItems(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getLowStockItems(
+      request.user.orgId,
+    );
+  }
+
+  @Get('out-of-stock')
+  @RequirePermissions('item.view')
+  getOutOfStockItems(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getOutOfStockItems(
+      request.user.orgId,
+    );
+  }
 }
