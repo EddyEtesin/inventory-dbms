@@ -8,6 +8,7 @@ import { LocationsModule } from './locations/locations.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { ItemsModule } from './items/items.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { InventoryModule } from './inventory/inventory.module';
     SuppliersModule,
     ItemsModule,
     InventoryModule,
+    ReportsModule,
   ],
   controllers: [AppController],
 })

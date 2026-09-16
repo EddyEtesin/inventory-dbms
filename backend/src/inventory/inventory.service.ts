@@ -10,6 +10,95 @@ import { PrismaService } from '../prisma/prisma.service';
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
+    private getReferencePrefix(
+    transactionType: TransactionType,
+  ): string {
+    switch (transactionType) {
+      case TransactionType.receive:
+        return 'REC';
+
+      case TransactionType.issue:
+        return 'ISS';
+
+      case TransactionType.adjustment:
+        return 'ADJ';
+
+      case TransactionType.transfer:
+        return 'TRF';
+
+      case TransactionType.return:
+        return 'RET';
+
+      case TransactionType.damage:
+        return 'DMG';
+
+      case TransactionType.expiry:
+        return 'EXP';
+
+      case TransactionType.loss:
+        return 'LOS';
+
+      case TransactionType.opening_balance:
+        return 'OPN';
+
+      default:
+        return 'TXN';
+    }
+  }
+
+  private formatReferenceDate(date: Date): string {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+
+    return `${day}${month}${year}`;
+  }
+
+  private async generateTransactionReference(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    transactionType: TransactionType,
+    sku: string,
+    now = new Date(),
+  ): Promise<string> {
+    const sequenceDate = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    const prefix = this.getReferencePrefix(transactionType);
+    const datePart = this.formatReferenceDate(now);
+
+    const sequence =
+      await tx.transactionSequence.upsert({
+        where: {
+          orgId_transactionType_sequenceDate: {
+            orgId,
+            transactionType,
+            sequenceDate,
+          },
+        },
+        create: {
+          orgId,
+          transactionType,
+          sequenceDate,
+          lastNumber: 1,
+        },
+        update: {
+          lastNumber: {
+            increment: 1,
+          },
+        },
+      });
+
+    const sequenceNumber = String(
+      sequence.lastNumber,
+    ).padStart(4, '0');
+
+    return `${prefix}-${sku}-${datePart}-${sequenceNumber}`;
+  }
+
     private isUniqueConstraintError(error: unknown): boolean {
     return (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -146,51 +235,49 @@ export class InventoryService {
   }
 
   async getItemInventory(
-    orgId: string,
-    itemId: string,
-  ) {
-    const item = await this.prisma.item.findFirst({
-      where: {
-        orgId,
-        id: itemId,
-      },
-      select: {
-        id: true,
-        sku: true,
-        name: true,
-        status: true,
-      },
-    });
+  orgId: string,
+  itemId: string,
+) {
+  const item = await this.prisma.item.findFirst({
+    where: {
+      orgId,
+      id: itemId,
+    },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      status: true,
+    },
+  });
 
-    if (!item) {
-      throw new NotFoundException(
-        'Item not found in this organization.',
-      );
-    }
-
-    return this.prisma.itemLocation.findMany({
-      where: {
-        orgId,
-        itemId,
-      },
-      orderBy: {
-        location: {
-          name: 'asc',
-        },
-      },
-      include: {
-        location: {
-          select: {
-            id: true,
-            name: true,
-            locationType: true,
-            status: true,
-          },
-        },
-      },
-    });
+  if (!item) {
+    throw new NotFoundException(
+      'Item not found in this organization.',
+    );
   }
 
+  return this.prisma.itemLocation.findMany({
+    where: {
+      orgId,
+      itemId,
+    },
+    orderBy: {
+      location: {
+        name: 'asc',
+      },
+    },
+    include: {
+      location: {
+        select: {
+          id: true,
+          name: true,
+          locationType: true,
+        },
+      },
+    },
+  });
+}
   async getLocationInventory(
     orgId: string,
     locationId: string,
@@ -249,6 +336,8 @@ export class InventoryService {
     reference?: string,
     notes?: string,
   ) {
+    void reference;
+
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
         'Opening balance quantity must be a positive whole number.',
@@ -326,7 +415,6 @@ export class InventoryService {
             existingTransaction.locationId === locationId &&
             existingTransaction.quantity === quantity &&
             existingTransaction.txnType === 'opening_balance' &&
-            existingTransaction.reference === reference &&
             existingTransaction.notes === notes;
 
           if (!sameRequest) {
@@ -381,6 +469,14 @@ export class InventoryService {
               },
             });
 
+        const generatedReference =
+          await this.generateTransactionReference(
+            tx,
+            orgId,
+            TransactionType.opening_balance,
+            item.sku,
+          );
+
         const transaction =
           await tx.stockTransaction.create({
             data: {
@@ -391,7 +487,7 @@ export class InventoryService {
               quantity,
               performedBy,
               idempotencyKey,
-              reference,
+              reference: generatedReference,
               notes,
             },
           });
@@ -436,7 +532,6 @@ export class InventoryService {
         existingTransaction.locationId === locationId &&
         existingTransaction.quantity === quantity &&
         existingTransaction.txnType === 'opening_balance' &&
-        existingTransaction.reference === reference &&
         existingTransaction.notes === notes;
 
       if (!sameRequest) {
@@ -614,6 +709,8 @@ export class InventoryService {
       reference?: string,
       notes?: string,
   ) {
+    void reference;
+
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
         'Received stock quantity must be a positive whole number.',
@@ -691,7 +788,6 @@ export class InventoryService {
             existingTransaction.locationId === locationId &&
             existingTransaction.quantity === quantity &&
             existingTransaction.txnType === 'receive' &&
-            existingTransaction.reference === reference &&
             existingTransaction.notes === notes;
 
           if (!sameRequest) {
@@ -732,6 +828,14 @@ export class InventoryService {
           },
         });
 
+        const generatedReference =
+          await this.generateTransactionReference(
+            tx,
+            orgId,
+            TransactionType.receive,
+            item.sku,
+          );
+
         const transaction = await tx.stockTransaction.create({
           data: {
             orgId,
@@ -741,7 +845,7 @@ export class InventoryService {
             quantity,
             performedBy,
             idempotencyKey,
-            reference,
+            reference: generatedReference,
             notes,
           },
         });
@@ -785,7 +889,6 @@ export class InventoryService {
         existingTransaction.locationId === locationId &&
         existingTransaction.quantity === quantity &&
         existingTransaction.txnType === 'receive' &&
-        existingTransaction.reference === reference &&
         existingTransaction.notes === notes;
 
       if (!sameRequest) {
@@ -819,6 +922,8 @@ export class InventoryService {
     reference?: string,
     notes?: string,
   ) {
+    void reference;
+
     if (!Number.isInteger(quantity) || quantity === 0) {
       throw new ConflictException(
         'Adjustment quantity must be a non-zero whole number.',
@@ -900,6 +1005,14 @@ export class InventoryService {
         );
       }
 
+      const generatedReference =
+        await this.generateTransactionReference(
+          tx,
+          orgId,
+          TransactionType.adjustment,
+          item.sku,
+        );
+
       const transaction = await tx.stockTransaction.create({
         data: {
           orgId,
@@ -908,7 +1021,7 @@ export class InventoryService {
           txnType: 'adjustment',
           quantity,
           performedBy,
-          reference,
+          reference: generatedReference,
           notes,
         },
       });
@@ -939,6 +1052,8 @@ export class InventoryService {
     reference?: string,
     notes?: string,
   ) {
+    void reference;
+
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
         'Issued stock quantity must be a positive whole number.',
@@ -1016,7 +1131,6 @@ export class InventoryService {
             existingTransaction.locationId === locationId &&
             existingTransaction.quantity === -quantity &&
             existingTransaction.txnType === 'issue' &&
-            existingTransaction.reference === reference &&
             existingTransaction.notes === notes;
 
           if (!sameRequest) {
@@ -1062,6 +1176,14 @@ export class InventoryService {
           );
         }
 
+        const generatedReference =
+          await this.generateTransactionReference(
+            tx,
+            orgId,
+            TransactionType.issue,
+            item.sku,
+          );
+
         const transaction = await tx.stockTransaction.create({
           data: {
             orgId,
@@ -1071,7 +1193,7 @@ export class InventoryService {
             quantity: -quantity,
             performedBy,
             idempotencyKey,
-            reference,
+            reference: generatedReference,
             notes,
           },
         });
@@ -1115,7 +1237,6 @@ export class InventoryService {
         existingTransaction.locationId === locationId &&
         existingTransaction.quantity === -quantity &&
         existingTransaction.txnType === 'issue' &&
-        existingTransaction.reference === reference &&
         existingTransaction.notes === notes;
 
       if (!sameRequest) {
@@ -1151,6 +1272,8 @@ export class InventoryService {
     reference?: string,
     notes?: string,
   ) {
+    void reference;
+
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new ConflictException(
         'Transfer quantity must be a positive whole number.',
@@ -1260,7 +1383,6 @@ export class InventoryService {
             existingTransaction.txnType === 'transfer' &&
             existingTransaction.itemId === itemId &&
             existingTransaction.quantity === -quantity &&
-            existingTransaction.reference === reference &&
             existingTransaction.notes === notes &&
             transfer?.fromLocationId === fromLocationId &&
             transfer?.toLocationId === toLocationId &&
@@ -1328,6 +1450,14 @@ export class InventoryService {
           );
         }
 
+        const generatedReference =
+          await this.generateTransactionReference(
+            tx,
+            orgId,
+            TransactionType.transfer,
+            item.sku,
+          );
+
         const transfer = await tx.stockTransfer.create({
           data: {
             orgId,
@@ -1336,7 +1466,7 @@ export class InventoryService {
             toLocationId,
             quantity,
             status: 'completed',
-            reference,
+            reference: generatedReference,
             performedBy,
             completedAt: new Date(),
           },
@@ -1350,7 +1480,7 @@ export class InventoryService {
               locationId: fromLocationId,
               txnType: 'transfer',
               quantity: -quantity,
-              reference,
+              reference: generatedReference,
               transferId: transfer.id,
               performedBy,
               idempotencyKey,
@@ -1366,7 +1496,7 @@ export class InventoryService {
               locationId: toLocationId,
               txnType: 'transfer',
               quantity,
-              reference,
+              reference: generatedReference,
               transferId: transfer.id,
               performedBy,
               notes,
@@ -1445,7 +1575,6 @@ export class InventoryService {
         existingTransaction.txnType === 'transfer' &&
         existingTransaction.itemId === itemId &&
         existingTransaction.quantity === -quantity &&
-        existingTransaction.reference === reference &&
         existingTransaction.notes === notes &&
         transfer?.fromLocationId === fromLocationId &&
         transfer?.toLocationId === toLocationId &&
@@ -2308,5 +2437,242 @@ export class InventoryService {
       .filter(
         (entry) => entry.stockStatus !== 'IN_STOCK',
       );
+  }
+
+  async getRecentInventoryActivity(orgId: string, limit = 10) {
+  const transactions = await this.prisma.stockTransaction.findMany({
+    where: {
+      orgId,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: Math.min(Math.max(limit, 1), 50),
+    select: {
+      id: true,
+      txnType: true,
+      quantity: true,
+      reference: true,
+      notes: true,
+      createdAt: true,
+
+      item: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+        },
+      },
+
+      location: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return {
+    data: transactions.map((transaction) => ({
+      id: transaction.id,
+      timestamp: transaction.createdAt,
+      action: transaction.txnType,
+      quantity: transaction.quantity,
+      reference: transaction.reference,
+      notes: transaction.notes,
+
+      item: {
+        id: transaction.item.id,
+        name: transaction.item.name,
+        sku: transaction.item.sku,
+      },
+
+      location: {
+        id: transaction.location.id,
+        name: transaction.location.name,
+      },
+
+      performedBy: {
+        id: transaction.user.id,
+        name: transaction.user.name,
+        email: transaction.user.email,
+      },
+    })),
+
+    pagination: {
+      limit: Math.min(Math.max(limit, 1), 50),
+      count: transactions.length,
+    },
+  };
+}
+
+async getInventoryRegister(orgId: string) {
+  const items = await this.prisma.item.findMany({
+    where: {
+      orgId,
+      status: 'active',
+    },
+    orderBy: {
+      name: 'asc',
+    },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      unitOfMeasure: true,
+      unitPrice: true,
+      reorderLevel: true,
+
+      category: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      locations: {
+        select: {
+          id: true,
+          quantity: true,
+          reorderLevel: true,
+
+          location: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          location: {
+            name: 'asc',
+          },
+        },
+      },
+    },
+  });
+
+  return {
+    data: items.map((item) => {
+      const totalQuantity = item.locations.reduce(
+        (sum, location) => sum + location.quantity,
+        0,
+      );
+
+      const effectiveReorderLevel = item.reorderLevel;
+
+      const locationCount = item.locations.length;
+
+      const status =
+        totalQuantity === 0
+          ? 'OUT_OF_STOCK'
+          : totalQuantity <= effectiveReorderLevel
+            ? 'LOW_STOCK'
+            : 'IN_STOCK';
+
+      return {
+        id: item.id,
+        sku: item.sku,
+        name: item.name,
+        category: item.category
+          ? {
+              id: item.category.id,
+              name: item.category.name,
+            }
+          : null,
+
+        unitOfMeasure: item.unitOfMeasure,
+        unitPrice: Number(item.unitPrice),
+
+        quantity: totalQuantity,
+        locations: locationCount,
+        reorderLevel: effectiveReorderLevel,
+        status,
+
+        locationBreakdown: item.locations.map((entry) => ({
+          id: entry.id,
+          locationId: entry.location.id,
+          locationName: entry.location.name,
+          quantity: entry.quantity,
+          reorderLevel:
+            entry.reorderLevel ?? effectiveReorderLevel,
+        })),
+      };
+    }),
+  };
+}
+
+  async removeItemLocation(
+    orgId: string,
+    itemId: string,
+    locationId: string,
+  ) {
+    const item = await this.prisma.item.findFirst({
+      where: {
+        orgId,
+        id: itemId,
+      },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException(
+        'Item not found in this organization.',
+      );
+    }
+
+    const balance = await this.prisma.itemLocation.findUnique({
+      where: {
+        orgId_itemId_locationId: {
+          orgId,
+          itemId,
+          locationId,
+        },
+      },
+    });
+
+    if (!balance) {
+      return {
+        removed: false,
+        message: 'Item is not assigned to this location.',
+      };
+    }
+
+    if (balance.quantity !== 0) {
+      throw new ConflictException(
+        `Cannot remove this location because ${item.name} currently has ${balance.quantity} ${
+          balance.quantity === 1 ? 'unit' : 'units'
+        } of stock there. Transfer or issue the stock first.`,
+      );
+    }
+
+    await this.prisma.itemLocation.delete({
+      where: {
+        orgId_itemId_locationId: {
+          orgId,
+          itemId,
+          locationId,
+        },
+      },
+    });
+
+    return {
+      removed: true,
+      itemId,
+      locationId,
+    };
   }
 }

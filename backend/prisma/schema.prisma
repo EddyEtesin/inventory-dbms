@@ -6,6 +6,346 @@ datasource db {
   provider = "postgresql"
 }
 
+model Organization {
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String
+  industryType         String                @map("industry_type")
+  status               OrganizationStatus    @default(active)
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  auditLogs            AuditLog[]
+  categories           Category[]
+  attributes           ItemAttribute[]
+  extensions           ItemExtension[]
+  itemLocations        ItemLocation[]
+  items                Item[]
+  locations            Location[]
+  members              OrganizationMember[]
+  roles                Role[]
+  transactions         StockTransaction[]
+  transfers            StockTransfer[]
+  suppliers            Supplier[]
+  transactionSequences TransactionSequence[]
+
+  @@index([industryType])
+  @@index([status])
+  @@map("organizations")
+}
+
+model User {
+  id           String               @id @default(uuid()) @db.Uuid
+  name         String
+  email        String               @unique
+  passwordHash String?              @map("password_hash")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  auditLogs    AuditLog[]
+  memberships  OrganizationMember[]
+  transactions StockTransaction[]
+  transfers    StockTransfer[]
+
+  @@map("users")
+}
+
+model OrganizationMember {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  roleId       String       @map("role_id") @db.Uuid
+  status       MemberStatus @default(invited)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [orgId, roleId], references: [orgId, id])
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([orgId, status])
+  @@index([userId])
+  @@index([orgId, roleId])
+  @@map("organization_members")
+}
+
+model Role {
+  id           String               @id @default(uuid()) @db.Uuid
+  orgId        String               @map("org_id") @db.Uuid
+  name         String
+  roleType     RoleType             @default(custom) @map("role_type")
+  description  String?
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  members      OrganizationMember[]
+  permissions  RolePermission[]
+  organization Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, id])
+  @@unique([orgId, name])
+  @@index([orgId, roleType])
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  description String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model Location {
+  id            String             @id @default(uuid()) @db.Uuid
+  orgId         String             @map("org_id") @db.Uuid
+  name          String
+  locationType  String             @map("location_type")
+  parentId      String?            @map("parent_id") @db.Uuid
+  status        String             @default("active")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  inventories   ItemLocation[]
+  organization  Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent        Location?          @relation("LocationHierarchy", fields: [orgId, parentId], references: [orgId, id])
+  children      Location[]         @relation("LocationHierarchy")
+  transactions  StockTransaction[]
+  fromTransfers StockTransfer[]    @relation("TransferFrom")
+  toTransfers   StockTransfer[]    @relation("TransferTo")
+
+  @@unique([orgId, id])
+  @@unique([orgId, name])
+  @@index([orgId, locationType])
+  @@index([orgId, parentId])
+  @@map("locations")
+}
+
+model Category {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  name         String
+  description  String?
+  parentId     String?      @map("parent_id") @db.Uuid
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent       Category?    @relation("CategoryHierarchy", fields: [orgId, parentId], references: [orgId, id])
+  children     Category[]   @relation("CategoryHierarchy")
+  items        Item[]
+
+  @@unique([orgId, id])
+  @@unique([orgId, name, parentId])
+  @@index([orgId, parentId])
+  @@map("categories")
+}
+
+model Supplier {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  contactInfo  Json?        @map("contact_info")
+  status       String       @default("active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  items        Item[]
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, id])
+  @@unique([orgId, name])
+  @@index([orgId, status])
+  @@index([orgId, name])
+  @@map("suppliers")
+}
+
+model Item {
+  id            String             @id @default(uuid()) @db.Uuid
+  orgId         String             @map("org_id") @db.Uuid
+  sku           String
+  name          String
+  description   String?
+  categoryId    String?            @map("category_id") @db.Uuid
+  supplierId    String?            @map("supplier_id") @db.Uuid
+  unitOfMeasure String             @map("unit_of_measure")
+  unitPrice     Decimal            @map("unit_price") @db.Decimal(12, 2)
+  reorderLevel  Int                @default(0) @map("reorder_level")
+  status        ItemStatus         @default(active)
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  attributes    ItemAttribute[]
+  extension     ItemExtension?
+  locations     ItemLocation[]
+  category      Category?          @relation(fields: [orgId, categoryId], references: [orgId, id])
+  organization  Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  supplier      Supplier?          @relation(fields: [orgId, supplierId], references: [orgId, id])
+  transactions  StockTransaction[]
+  transfers     StockTransfer[]
+
+  @@unique([orgId, id])
+  @@unique([orgId, sku])
+  @@index([orgId, name])
+  @@index([orgId, categoryId])
+  @@index([orgId, supplierId])
+  @@index([orgId, status])
+  @@map("items")
+}
+
+model ItemLocation {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  itemId       String       @map("item_id") @db.Uuid
+  locationId   String       @map("location_id") @db.Uuid
+  quantity     Int          @default(0)
+  reorderLevel Int?         @map("reorder_level")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
+  location     Location     @relation(fields: [orgId, locationId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, itemId, locationId])
+  @@index([orgId, locationId])
+  @@index([orgId, itemId])
+  @@index([orgId, quantity, reorderLevel])
+  @@map("item_locations")
+}
+
+model StockTransfer {
+  id             String             @id @default(uuid()) @db.Uuid
+  orgId          String             @map("org_id") @db.Uuid
+  itemId         String             @map("item_id") @db.Uuid
+  fromLocationId String             @map("from_location_id") @db.Uuid
+  toLocationId   String             @map("to_location_id") @db.Uuid
+  quantity       Int
+  status         TransferStatus     @default(pending)
+  reference      String?
+  performedBy    String             @map("performed_by") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+  completedAt    DateTime?          @map("completed_at")
+  transactions   StockTransaction[]
+  organization   Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  fromLocation   Location           @relation("TransferFrom", fields: [orgId, fromLocationId], references: [orgId, id])
+  item           Item               @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
+  toLocation     Location           @relation("TransferTo", fields: [orgId, toLocationId], references: [orgId, id])
+  user           User               @relation(fields: [performedBy], references: [id])
+
+  @@unique([orgId, id])
+  @@index([orgId, itemId])
+  @@index([orgId, fromLocationId])
+  @@index([orgId, toLocationId])
+  @@index([orgId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransaction {
+  id             String          @id @default(uuid()) @db.Uuid
+  orgId          String          @map("org_id") @db.Uuid
+  itemId         String          @map("item_id") @db.Uuid
+  locationId     String          @map("location_id") @db.Uuid
+  txnType        TransactionType @map("txn_type")
+  quantity       Int
+  reference      String?
+  transferId     String?         @map("transfer_id") @db.Uuid
+  performedBy    String          @map("performed_by") @db.Uuid
+  notes          String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  idempotencyKey String?
+  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  item           Item            @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
+  location       Location        @relation(fields: [orgId, locationId], references: [orgId, id])
+  transfer       StockTransfer?  @relation(fields: [orgId, transferId], references: [orgId, id])
+  user           User            @relation(fields: [performedBy], references: [id])
+
+  @@unique([orgId, id])
+  @@unique([orgId, idempotencyKey])
+  @@index([orgId, itemId, createdAt])
+  @@index([orgId, locationId, createdAt])
+  @@index([orgId, txnType])
+  @@index([orgId, performedBy])
+  @@index([orgId, transferId])
+  @@map("stock_transactions")
+}
+
+model ItemAttribute {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  itemId       String       @map("item_id") @db.Uuid
+  attrKey      String       @map("attr_key")
+  attrValue    String       @map("attr_value")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, itemId, attrKey])
+  @@index([orgId, attrKey])
+  @@map("item_attributes")
+}
+
+model ItemExtension {
+  itemId        String       @id @map("item_id") @db.Uuid
+  orgId         String       @map("org_id") @db.Uuid
+  extensionType String       @map("extension_type")
+  payload       Json
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  organization  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  item          Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, itemId])
+  @@index([orgId, extensionType])
+  @@map("item_extensions")
+}
+
+model TransactionSequence {
+  id              String          @id @default(uuid()) @db.Uuid
+  orgId           String          @map("org_id") @db.Uuid
+  transactionType TransactionType @map("transaction_type")
+  sequenceDate    String          @map("sequence_date")
+  lastNumber      Int             @default(0) @map("last_number")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  organization    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, transactionType, sequenceDate])
+  @@index([orgId, sequenceDate])
+  @@map("transaction_sequences")
+}
+
+model AuditLog {
+  id           String       @id @default(uuid()) @db.Uuid
+  orgId        String       @map("org_id") @db.Uuid
+  userId       String?      @map("user_id") @db.Uuid
+  action       String
+  entityType   String       @map("entity_type")
+  entityId     String       @map("entity_id")
+  oldValues    Json?        @map("old_values")
+  newValues    Json?        @map("new_values")
+  ipAddress    String?      @map("ip_address")
+  userAgent    String?      @map("user_agent")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([orgId, entityType, entityId])
+  @@index([orgId, userId])
+  @@map("audit_logs")
+}
+
 enum OrganizationStatus {
   active
   suspended
@@ -46,344 +386,4 @@ enum TransferStatus {
   pending
   completed
   cancelled
-}
-
-model Organization {
-  id           String             @id @default(uuid()) @db.Uuid
-  name         String
-  industryType String             @map("industry_type")
-  status       OrganizationStatus @default(active)
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
-
-  members       OrganizationMember[]
-  roles         Role[]
-  locations     Location[]
-  categories    Category[]
-  suppliers     Supplier[]
-  items         Item[]
-  itemLocations ItemLocation[]
-  transactions  StockTransaction[]
-  transfers     StockTransfer[]
-  attributes    ItemAttribute[]
-  extensions    ItemExtension[]
-  auditLogs     AuditLog[]
-
-  @@index([industryType])
-  @@index([status])
-  @@map("organizations")
-}
-
-model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
-  email        String   @unique
-  passwordHash String?  @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  memberships  OrganizationMember[]
-  transactions StockTransaction[]
-  transfers    StockTransfer[]
-  auditLogs    AuditLog[]
-
-  @@map("users")
-}
-
-model OrganizationMember {
-  id        String       @id @default(uuid()) @db.Uuid
-  orgId     String       @map("org_id") @db.Uuid
-  userId    String       @map("user_id") @db.Uuid
-  roleId    String       @map("role_id") @db.Uuid
-  status    MemberStatus @default(invited)
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         Role         @relation(fields: [orgId, roleId], references: [orgId, id], onDelete: Restrict)
-
-  @@unique([orgId, userId])
-  @@index([orgId, status])
-  @@index([userId])
-  @@index([orgId, roleId])
-  @@map("organization_members")
-}
-
-model Role {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  roleType    RoleType @default(custom) @map("role_type")
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  organization Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  members      OrganizationMember[]
-  permissions  RolePermission[]
-
-  @@unique([orgId, id])
-  @@unique([orgId, name])
-  @@index([orgId, roleType])
-  @@map("roles")
-}
-
-model Permission {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  roles RolePermission[]
-
-  @@map("permissions")
-}
-
-model RolePermission {
-  id           String   @id @default(uuid()) @db.Uuid
-  roleId       String   @map("role_id") @db.Uuid
-  permissionId String   @map("permission_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@unique([roleId, permissionId])
-  @@index([permissionId])
-  @@map("role_permissions")
-}
-
-model Location {
-  id           String   @id @default(uuid()) @db.Uuid
-  orgId        String   @map("org_id") @db.Uuid
-  name         String
-  locationType String   @map("location_type")
-  parentId     String?  @map("parent_id") @db.Uuid
-  status       String   @default("active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  organization  Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  parent        Location?          @relation("LocationHierarchy", fields: [orgId, parentId], references: [orgId, id], onDelete: Restrict)
-  children      Location[]         @relation("LocationHierarchy")
-  inventories   ItemLocation[]
-  transactions  StockTransaction[]
-  fromTransfers StockTransfer[]    @relation("TransferFrom")
-  toTransfers   StockTransfer[]    @relation("TransferTo")
-
-  @@unique([orgId, id])
-  @@unique([orgId, name])
-  @@index([orgId, locationType])
-  @@index([orgId, parentId])
-  @@map("locations")
-}
-
-model Category {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  description String?
-  parentId    String?  @map("parent_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  parent       Category?    @relation("CategoryHierarchy", fields: [orgId, parentId], references: [orgId, id], onDelete: Restrict)
-  children     Category[]   @relation("CategoryHierarchy")
-  items        Item[]
-
-  @@unique([orgId, id])
-  @@unique([orgId, name, parentId])
-  @@index([orgId, parentId])
-  @@map("categories")
-}
-
-model Supplier {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  phone       String?
-  email       String?
-  address     String?
-  contactInfo Json?    @map("contact_info") @db.JsonB
-  status      String   @default("active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  items        Item[]
-
-  @@unique([orgId, id])
-  @@unique([orgId, name])
-  @@index([orgId, status])
-  @@index([orgId, name])
-  @@map("suppliers")
-}
-
-model Item {
-  id            String     @id @default(uuid()) @db.Uuid
-  orgId         String     @map("org_id") @db.Uuid
-  sku           String
-  name          String
-  description   String?
-  categoryId    String?    @map("category_id") @db.Uuid
-  supplierId    String?    @map("supplier_id") @db.Uuid
-  unitOfMeasure String     @map("unit_of_measure")
-  unitPrice     Decimal    @map("unit_price") @db.Decimal(12, 2)
-  reorderLevel  Int        @default(0) @map("reorder_level")
-  status        ItemStatus @default(active)
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-
-  organization Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  category     Category?          @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Restrict)
-  supplier     Supplier?          @relation(fields: [orgId, supplierId], references: [orgId, id], onDelete: Restrict)
-  locations    ItemLocation[]
-  attributes   ItemAttribute[]
-  extension    ItemExtension?
-  transactions StockTransaction[]
-  transfers    StockTransfer[]
-
-  @@unique([orgId, id])
-  @@unique([orgId, sku])
-  @@index([orgId, name])
-  @@index([orgId, categoryId])
-  @@index([orgId, supplierId])
-  @@index([orgId, status])
-  @@map("items")
-}
-
-model ItemLocation {
-  id           String   @id @default(uuid()) @db.Uuid
-  orgId        String   @map("org_id") @db.Uuid
-  itemId       String   @map("item_id") @db.Uuid
-  locationId   String   @map("location_id") @db.Uuid
-  quantity     Int      @default(0)
-  reorderLevel Int?     @map("reorder_level")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
-  location     Location     @relation(fields: [orgId, locationId], references: [orgId, id], onDelete: Cascade)
-
-  @@unique([orgId, itemId, locationId])
-  @@index([orgId, locationId])
-  @@index([orgId, itemId])
-  @@index([orgId, quantity, reorderLevel])
-  @@map("item_locations")
-}
-
-model StockTransfer {
-  id             String         @id @default(uuid()) @db.Uuid
-  orgId          String         @map("org_id") @db.Uuid
-  itemId         String         @map("item_id") @db.Uuid
-  fromLocationId String         @map("from_location_id") @db.Uuid
-  toLocationId   String         @map("to_location_id") @db.Uuid
-  quantity       Int
-  status         TransferStatus @default(pending)
-  reference      String?
-  performedBy    String         @map("performed_by") @db.Uuid
-  createdAt      DateTime       @default(now()) @map("created_at")
-  completedAt    DateTime?      @map("completed_at")
-
-  organization Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  item         Item               @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
-  fromLocation Location           @relation("TransferFrom", fields: [orgId, fromLocationId], references: [orgId, id], onDelete: Restrict)
-  toLocation   Location           @relation("TransferTo", fields: [orgId, toLocationId], references: [orgId, id], onDelete: Restrict)
-  user         User               @relation(fields: [performedBy], references: [id], onDelete: Restrict)
-  transactions StockTransaction[]
-
-  @@unique([orgId, id])
-  @@index([orgId, itemId])
-  @@index([orgId, fromLocationId])
-  @@index([orgId, toLocationId])
-  @@index([orgId, status])
-  @@map("stock_transfers")
-}
-
-model StockTransaction {
-  id          String          @id @default(uuid()) @db.Uuid
-  orgId       String          @map("org_id") @db.Uuid
-  itemId      String          @map("item_id") @db.Uuid
-  locationId  String          @map("location_id") @db.Uuid
-  txnType     TransactionType @map("txn_type")
-  quantity    Int
-  reference   String?
-  idempotencyKey String?      
-  transferId  String?         @map("transfer_id") @db.Uuid
-  performedBy String          @map("performed_by") @db.Uuid
-  notes       String?
-  createdAt   DateTime        @default(now()) @map("created_at")
-
-  organization Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  item         Item           @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
-  location     Location       @relation(fields: [orgId, locationId], references: [orgId, id], onDelete: Restrict)
-  transfer     StockTransfer? @relation(fields: [orgId, transferId], references: [orgId, id], onDelete: Restrict)
-  user         User           @relation(fields: [performedBy], references: [id], onDelete: Restrict)
-
-  @@unique([orgId, id])
-  @@index([orgId, itemId, createdAt])
-  @@index([orgId, locationId, createdAt])
-  @@index([orgId, txnType])
-  @@index([orgId, performedBy])
-  @@index([orgId, transferId])
-  @@map("stock_transactions")
-  @@unique([orgId, idempotencyKey])
-}
-
-model ItemAttribute {
-  id        String   @id @default(uuid()) @db.Uuid
-  orgId     String   @map("org_id") @db.Uuid
-  itemId    String   @map("item_id") @db.Uuid
-  attrKey   String   @map("attr_key")
-  attrValue String   @map("attr_value")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
-
-  @@unique([orgId, itemId, attrKey])
-  @@index([orgId, attrKey])
-  @@map("item_attributes")
-}
-
-model ItemExtension {
-  itemId        String   @id @map("item_id") @db.Uuid
-  orgId         String   @map("org_id") @db.Uuid
-  extensionType String   @map("extension_type")
-  payload       Json     @db.JsonB
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-  @@unique([orgId, itemId])
-  @@index([orgId, extensionType])
-  @@map("item_extensions")
-}
-
-model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  orgId      String   @map("org_id") @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
-  action     String
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id")
-  oldValues  Json?    @map("old_values") @db.JsonB
-  newValues  Json?    @map("new_values") @db.JsonB
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([orgId, createdAt])
-  @@index([orgId, entityType, entityId])
-  @@index([orgId, userId])
-  @@map("audit_logs")
 }

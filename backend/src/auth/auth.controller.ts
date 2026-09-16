@@ -6,11 +6,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+
 import { Request } from 'express';
+
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { RequirePermissions } from './decorators/permissions.decorator';
+
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
@@ -21,7 +24,9 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
 
   @Post('register')
   register(@Body() dto: RegisterDto) {
@@ -35,22 +40,29 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  getCurrentUser(@Req() request: AuthenticatedRequest) {
-    return {
-      userId: request.user.sub,
-      email: request.user.email,
-      organizationId: request.user.orgId,
-      roleId: request.user.roleId,
-    };
+  getCurrentUser(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.authService.getCurrentUser(
+      request.user,
+    );
   }
 
   @Get('rbac-test')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('organization.update')
-  testRbac(@Req() request: AuthenticatedRequest) {
+  @UseGuards(
+    JwtAuthGuard,
+    PermissionsGuard,
+  )
+  @RequirePermissions(
+    'organization.update',
+  )
+  testRbac(
+    @Req() request: AuthenticatedRequest,
+  ) {
     return {
       status: 'ok',
-      message: 'You have organization.update permission.',
+      message:
+        'You have organization.update permission.',
       user: request.user,
     };
   }

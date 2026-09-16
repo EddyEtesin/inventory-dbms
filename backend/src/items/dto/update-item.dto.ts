@@ -1,5 +1,6 @@
 import {
   IsDecimal,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -42,16 +43,18 @@ export class UpdateItemDto {
   unitOfMeasure?: string;
 
   @IsOptional()
-  @IsDecimal(
-    {
-      decimal_digits: '0,2',
-      force_decimal: false,
-    },
-  )
+  @IsDecimal({
+    decimal_digits: '0,2',
+    force_decimal: false,
+  })
   unitPrice?: string;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   reorderLevel?: number;
+
+  @IsOptional()
+  @IsIn(['active', 'discontinued'])
+  status?: 'active' | 'discontinued';
 }

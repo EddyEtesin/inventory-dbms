@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -96,6 +97,22 @@ export class ItemsController {
     return this.itemsService.archive(
       request.user.orgId,
       id,
+    );
+  }
+
+  @Delete(
+  'items/:itemId/locations/:locationId',
+  )
+  @RequirePermissions('item.update')
+  removeItemLocation(
+    @Req() request: AuthenticatedRequest,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    return this.itemsService.removeItemLocation(
+      request.user.orgId,
+      itemId,
+      locationId,
     );
   }
 }

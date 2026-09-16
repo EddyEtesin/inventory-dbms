@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -81,6 +82,20 @@ export class InventoryController {
     @Param('locationId') locationId: string,
   ) {
     return this.inventoryService.getOrCreateBalance(
+      request.user.orgId,
+      itemId,
+      locationId,
+    );
+  }
+
+  @Delete('items/:itemId/locations/:locationId')
+  @RequirePermissions('item.update')
+  removeItemLocation(
+    @Req() request: AuthenticatedRequest,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    return this.inventoryService.removeItemLocation(
       request.user.orgId,
       itemId,
       locationId,
@@ -298,4 +313,24 @@ export class InventoryController {
       request.user.orgId,
     );
   }
+
+@Get('activity/recent')
+@RequirePermissions('item.view')
+getRecentInventoryActivity(
+  @Req() request: AuthenticatedRequest,
+) {
+  return this.inventoryService.getRecentInventoryActivity(
+    request.user.orgId,
+  );
+}
+
+@Get('register')
+@RequirePermissions('item.view')
+getInventoryRegister(
+  @Req() request: AuthenticatedRequest,
+) {
+  return this.inventoryService.getInventoryRegister(
+    request.user.orgId,
+  );
+}
 }

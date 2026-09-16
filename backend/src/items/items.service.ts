@@ -170,118 +170,139 @@ export class ItemsService {
     return item;
   }
 
-  async update(
-    orgId: string,
-    id: string,
-    dto: UpdateItemDto,
-  ) {
-    const existing = await this.prisma.item.findFirst({
+ async update(
+  orgId: string,
+  id: string,
+  dto: UpdateItemDto,
+) {
+  const existing = await this.prisma.item.findFirst({
+    where: {
+      orgId,
+      id,
+    },
+  });
+
+  if (!existing) {
+    throw new NotFoundException('Item not found.');
+  }
+
+  const newSku = dto.sku?.trim();
+  const newName = dto.name?.trim();
+  const newUnit = dto.unitOfMeasure?.trim();
+
+  if (newSku) {
+    const duplicate = await this.prisma.item.findFirst({
       where: {
         orgId,
-        id,
-      },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Item not found.');
-    }
-
-    const newSku = dto.sku?.trim();
-    const newName = dto.name?.trim();
-    const newUnit = dto.unitOfMeasure?.trim();
-
-    if (newSku) {
-      const duplicate = await this.prisma.item.findFirst({
-        where: {
-          orgId,
-          sku: newSku,
-          NOT: {
-            id,
-          },
+        sku: newSku,
+        NOT: {
+          id,
         },
-      });
-
-      if (duplicate) {
-        throw new ConflictException(
-          'An item with this SKU already exists.',
-        );
-      }
-    }
-
-    if (newSku === '') {
-      throw new BadRequestException('SKU cannot be empty.');
-    }
-
-    if (newName === '') {
-      throw new BadRequestException(
-        'Item name cannot be empty.',
-      );
-    }
-
-    if (newUnit === '') {
-      throw new BadRequestException(
-        'Unit of measure cannot be empty.',
-      );
-    }
-
-    if (dto.unitPrice !== undefined) {
-      this.validateMoney(dto.unitPrice, 'Unit price');
-    }
-
-    if (dto.categoryId !== undefined) {
-      if (dto.categoryId) {
-        await this.ensureCategoryBelongsToOrganization(
-          orgId,
-          dto.categoryId,
-        );
-      }
-    }
-
-    if (dto.supplierId !== undefined) {
-      if (dto.supplierId) {
-        await this.ensureSupplierBelongsToOrganization(
-          orgId,
-          dto.supplierId,
-        );
-      }
-    }
-
-    return this.prisma.item.update({
-      where: {
-        id,
-      },
-      data: {
-        ...(newSku !== undefined && {
-          sku: newSku,
-        }),
-        ...(newName !== undefined && {
-          name: newName,
-        }),
-        ...(dto.description !== undefined && {
-          description: dto.description.trim() || null,
-        }),
-        ...(dto.categoryId !== undefined && {
-          categoryId: dto.categoryId || null,
-        }),
-        ...(dto.supplierId !== undefined && {
-          supplierId: dto.supplierId || null,
-        }),
-        ...(newUnit !== undefined && {
-          unitOfMeasure: newUnit,
-        }),
-        ...(dto.unitPrice !== undefined && {
-          unitPrice: dto.unitPrice,
-        }),
-        ...(dto.reorderLevel !== undefined && {
-          reorderLevel: dto.reorderLevel,
-        }),
-      },
-      include: {
-        category: true,
-        supplier: true,
       },
     });
+
+    if (duplicate) {
+      throw new ConflictException(
+        'An item with this SKU already exists.',
+      );
+    }
   }
+
+  if (newSku === '') {
+    throw new BadRequestException(
+      'SKU cannot be empty.',
+    );
+  }
+
+  if (newName === '') {
+    throw new BadRequestException(
+      'Item name cannot be empty.',
+    );
+  }
+
+  if (newUnit === '') {
+    throw new BadRequestException(
+      'Unit of measure cannot be empty.',
+    );
+  }
+
+  if (dto.unitPrice !== undefined) {
+    this.validateMoney(
+      dto.unitPrice,
+      'Unit price',
+    );
+  }
+
+  if (dto.categoryId !== undefined) {
+    if (dto.categoryId) {
+      await this.ensureCategoryBelongsToOrganization(
+        orgId,
+        dto.categoryId,
+      );
+    }
+  }
+
+  if (dto.supplierId !== undefined) {
+    if (dto.supplierId) {
+      await this.ensureSupplierBelongsToOrganization(
+        orgId,
+        dto.supplierId,
+      );
+    }
+  }
+
+  return this.prisma.item.update({
+    where: {
+      id,
+    },
+    data: {
+      ...(newSku !== undefined && {
+        sku: newSku,
+      }),
+
+      ...(newName !== undefined && {
+        name: newName,
+      }),
+
+      ...(dto.description !== undefined && {
+        description:
+          dto.description.trim() || null,
+      }),
+
+      ...(dto.categoryId !== undefined && {
+        categoryId:
+          dto.categoryId || null,
+      }),
+
+      ...(dto.supplierId !== undefined && {
+        supplierId:
+          dto.supplierId || null,
+      }),
+
+      ...(newUnit !== undefined && {
+        unitOfMeasure: newUnit,
+      }),
+
+      ...(dto.unitPrice !== undefined && {
+        unitPrice: dto.unitPrice,
+      }),
+
+      ...(dto.reorderLevel !== undefined && {
+        reorderLevel:
+          dto.reorderLevel,
+      }),
+
+      ...(dto.status !== undefined && {
+        status: dto.status,
+      }),
+    },
+
+    include: {
+      category: true,
+      supplier: true,
+    },
+  });
+}
 
   async archive(orgId: string, id: string) {
     const item = await this.prisma.item.findFirst({
@@ -371,4 +392,69 @@ export class ItemsService {
       );
     }
   }
+
+  async removeItemLocation(
+  orgId: string,
+  itemId: string,
+  locationId: string,
+) {
+  const item = await this.prisma.item.findFirst({
+    where: {
+      orgId,
+      id: itemId,
+    },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+    },
+  });
+
+  if (!item) {
+    throw new NotFoundException(
+      'Item not found in this organization.',
+    );
+  }
+
+  const balance =
+    await this.prisma.itemLocation.findUnique({
+      where: {
+        orgId_itemId_locationId: {
+          orgId,
+          itemId,
+          locationId,
+        },
+      },
+    });
+
+  if (!balance) {
+    return {
+      removed: false,
+      message:
+        'Item is not assigned to this location.',
+    };
+  }
+
+  if (balance.quantity !== 0) {
+    throw new ConflictException(
+      `Cannot remove this location because ${item.name} currently has ${balance.quantity} ${balance.quantity === 1 ? 'unit' : 'units'} of stock there. Transfer or issue the stock first.`,
+    );
+  }
+
+  await this.prisma.itemLocation.delete({
+    where: {
+      orgId_itemId_locationId: {
+        orgId,
+        itemId,
+        locationId,
+      },
+    },
+  });
+
+  return {
+    removed: true,
+    itemId,
+    locationId,
+  };
+}
 }
