@@ -12,6 +12,7 @@ import {
   Package,
   Settings,
   Truck,
+  Wrench,
 } from 'lucide-react';
 
 type InventorySidebarProps = {
@@ -46,9 +47,19 @@ const navItems = [
     icon: Package,
   },
   {
+    label: 'ITEMS',
+    href: '/items',
+    icon: Boxes,
+  },
+  {
     label: 'REPORTS',
     href: '/reports',
     icon: BarChart3,
+  },
+  {
+    label: 'SETUP',
+    href: '/setup',
+    icon: Wrench,
   },
 ];
 
@@ -86,8 +97,11 @@ export default function InventorySidebar({
         {navItems.map((item) => {
           const Icon = item.icon;
 
-          // Only highlight the exact page currently being viewed.
-          const active = pathname === item.href;
+          const active =
+            item.href === '/'
+              ? pathname === '/'
+              : pathname === item.href ||
+                pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
@@ -110,8 +124,9 @@ export default function InventorySidebar({
 
       {/* SETTINGS + COLLAPSE */}
       <div className="border-t border-[#f5f0e3]/15 px-2.5 py-3">
-        <button
-          type="button"
+        <Link
+          href="/settings"
+          title={collapsed ? 'SETTINGS' : undefined}
           className={`flex w-full items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest hover:bg-[#f5f0e3]/10 ${
             collapsed ? 'justify-center' : ''
           }`}
@@ -119,7 +134,7 @@ export default function InventorySidebar({
           <Settings size={16} strokeWidth={1.7} />
 
           {!collapsed && <span>SETTINGS</span>}
-        </button>
+        </Link>
 
         <button
           type="button"

@@ -26,6 +26,7 @@ model Organization {
   transfers            StockTransfer[]
   suppliers            Supplier[]
   transactionSequences TransactionSequence[]
+  setupStatus SetupStatus @default(NOT_STARTED)
 
   @@index([industryType])
   @@index([status])
@@ -386,4 +387,10 @@ enum TransferStatus {
   pending
   completed
   cancelled
+}
+
+enum SetupStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
 }

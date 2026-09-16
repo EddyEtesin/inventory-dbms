@@ -28,6 +28,12 @@ import type {
 
 import { apiFetch } from '../lib/api';
 
+type OrganizationLocation = {
+  id: string;
+  name: string;
+  locationType: string;
+};
+
 export default function InventoryPage() {
   const [collapsed, setCollapsed] =
     useState(false);
@@ -37,6 +43,9 @@ export default function InventoryPage() {
 
   const [items, setItems] =
     useState<RegisterItem[]>([]);
+
+  const [organizationLocations, setOrganizationLocations] =
+    useState<OrganizationLocation[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -127,8 +136,39 @@ export default function InventoryPage() {
     }
   }
 
+  async function loadLocations() {
+    try {
+      const token =
+        window.localStorage.getItem(
+          'accessToken',
+        );
+
+      if (!token) {
+        throw new Error(
+          'Please sign in first.',
+        );
+      }
+
+      const response =
+        await apiFetch<OrganizationLocation[]>(
+          '/locations',
+          token,
+        );
+
+      setOrganizationLocations(response);
+    } catch (err) {
+      console.error(
+        'Unable to load locations:',
+        err,
+      );
+
+      setOrganizationLocations([]);
+    }
+  }
+
   useEffect(() => {
     loadInventory();
+    loadLocations();
 
     const token =
       window.localStorage.getItem(
@@ -475,6 +515,8 @@ export default function InventoryPage() {
         );
       }
 
+      await loadLocations();
+
       resetOperationForm();
       setOperation(null);
     } catch (err) {
@@ -607,8 +649,14 @@ export default function InventoryPage() {
 
               <QuickActions
                 items={items}
+                locations={
+                  organizationLocations
+                }
                 onCompleted={
-                  loadInventory
+                  async () => {
+                    await loadInventory();
+                    await loadLocations();
+                  }
                 }
               />
             </div>
@@ -639,6 +687,9 @@ export default function InventoryPage() {
       <ItemDrawer
         selectedItem={
           selectedItem
+        }
+        organizationLocations={
+          organizationLocations
         }
         operation={
           operation
