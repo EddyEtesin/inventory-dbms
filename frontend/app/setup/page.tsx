@@ -73,6 +73,14 @@ const setupSteps: SetupStep[] = [
     icon: Package,
     href: '/setup/items',
   },
+  {
+    number: '05',
+    title: 'OPENING STOCK',
+    description:
+      'Enter the inventory already available at each assigned location.',
+    icon: Boxes,
+    href: '/setup/opening-balances',
+  },
 ];
 
 export default function SetupPage() {
@@ -94,6 +102,9 @@ export default function SetupPage() {
   useEffect(() => {
     async function loadOrganization() {
       try {
+        setLoading(true);
+        setError('');
+
         const token =
           window.localStorage.getItem(
             'accessToken',
@@ -142,7 +153,7 @@ export default function SetupPage() {
 
         {/* TOP BAR */}
         <header className="border border-[#b7a87e] bg-[#f5f0e3] px-5 py-4 shadow-[0_2px_0_#b7a87e,0_8px_20px_rgba(43,38,32,0.12)]">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <div className="font-mono text-[8px] tracking-[0.18em] text-[#5b5346]">
                 INVENTORY MANAGEMENT SYSTEM
@@ -228,7 +239,7 @@ export default function SetupPage() {
                 </div>
 
                 <div className="font-mono text-[7px] text-[#5b5346]">
-                  0 / 4 COMPLETE
+                  0 / 5 COMPLETE
                 </div>
               </div>
 
@@ -278,6 +289,7 @@ export default function SetupPage() {
 
                         <div className="flex shrink-0 items-center gap-2 font-mono text-[7px] tracking-widest text-[#5b5346] group-hover:text-[#2e4057]">
                           START
+
                           <ArrowRight
                             size={14}
                             strokeWidth={1.7}
@@ -331,17 +343,30 @@ export default function SetupPage() {
               </div>
             </div>
 
-            {/* DASHBOARD */}
-            <div className="mt-6 flex justify-end">
+            {/* ONBOARDING ACTIONS */}
+            <div className="mt-6 flex flex-col-reverse gap-2 border-t border-dashed border-[#b7a87e] pt-5 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
                 onClick={() =>
                   router.push('/')
                 }
-                className="flex items-center gap-2 border border-[#2b2620] px-4 py-2.5 font-mono text-[8px] tracking-widest hover:bg-[#2e4057] hover:text-[#f5f0e3]"
+                className="border border-[#2b2620] px-4 py-2.5 font-mono text-[8px] tracking-widest hover:bg-[#eae2ce]"
               >
-                GO TO DASHBOARD
-                <Boxes
+                SKIP SETUP
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    '/setup/locations',
+                  )
+                }
+                className="flex items-center justify-center gap-2 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620]"
+              >
+                CONTINUE SETUP
+
+                <ArrowRight
                   size={14}
                   strokeWidth={1.7}
                 />
@@ -354,11 +379,12 @@ export default function SetupPage() {
         <footer className="mt-3 border-t border-dashed border-[#b7a87e] pt-2 font-mono text-[7px] text-[#5b5346]">
           <div className="flex justify-between">
             <span>
-              INVENTORY LEDGER · ORGANIZATION
-              SETUP
+              INVENTORY LEDGER · ORGANIZATION SETUP
             </span>
 
-            <span>LIVE DATABASE</span>
+            <span>
+              LIVE DATABASE
+            </span>
           </div>
         </footer>
       </div>
