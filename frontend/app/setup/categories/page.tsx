@@ -530,7 +530,7 @@ export default function SetupCategoriesPage() {
             <div className="flex flex-col gap-4 border-b border-dashed border-[#b7a87e] pb-5 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                  SETUP · 03 / 04
+                  SETUP · 03 / 05
                 </div>
 
                 <h1 className="mt-1 font-mono text-[28px] leading-tight">
