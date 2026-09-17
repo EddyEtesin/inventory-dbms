@@ -25,6 +25,10 @@ type CurrentUserResponse = {
     name: string;
     industryType: string;
     status: string;
+    setupStatus:
+      | 'NOT_STARTED'
+      | 'IN_PROGRESS'
+      | 'COMPLETED';
   };
   role: {
     id: string;
@@ -32,7 +36,21 @@ type CurrentUserResponse = {
   };
 };
 
+type SetupProgressResponse = {
+  setupStatus:
+    | 'NOT_STARTED'
+    | 'IN_PROGRESS'
+    | 'COMPLETED';
+  startedCount: number;
+  steps: {
+    key: string;
+    started: boolean;
+    complete: boolean;
+    count: number;
+  }[];
+};
 type SetupStep = {
+  key: string;
   number: string;
   title: string;
   description: string;
@@ -42,6 +60,7 @@ type SetupStep = {
 
 const setupSteps: SetupStep[] = [
   {
+    key: 'locations',
     number: '01',
     title: 'LOCATIONS',
     description:
@@ -50,6 +69,7 @@ const setupSteps: SetupStep[] = [
     href: '/setup/locations',
   },
   {
+    key: 'suppliers',
     number: '02',
     title: 'SUPPLIERS',
     description:
@@ -58,6 +78,7 @@ const setupSteps: SetupStep[] = [
     href: '/setup/suppliers',
   },
   {
+    key: 'categories',
     number: '03',
     title: 'CATEGORIES',
     description:
@@ -66,6 +87,7 @@ const setupSteps: SetupStep[] = [
     href: '/setup/categories',
   },
   {
+    key: 'items',
     number: '04',
     title: 'ITEMS',
     description:
@@ -74,6 +96,7 @@ const setupSteps: SetupStep[] = [
     href: '/setup/items',
   },
   {
+    key: 'openingStock',
     number: '05',
     title: 'OPENING STOCK',
     description:
@@ -99,6 +122,11 @@ export default function SetupPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [setupProgress, setSetupProgress] =
+    useState<SetupProgressResponse | null>(
+      null,
+    );
+
   useEffect(() => {
     async function loadOrganization() {
       try {
@@ -120,12 +148,24 @@ export default function SetupPage() {
             '/auth/me',
             token,
           );
-
-        setOrganization(
-          response.organization,
-        );
-
         setUser(response.user);
+
+        const progress =
+          await apiFetch<SetupProgressResponse>(
+            '/auth/setup/start',
+            token,
+            {
+              method: 'POST',
+            },
+          );
+
+        setOrganization({
+          ...response.organization,
+          setupStatus:
+            progress.setupStatus,
+        });
+
+        setSetupProgress(progress);
       } catch (err) {
         setError(
           err instanceof Error
@@ -239,7 +279,12 @@ export default function SetupPage() {
                 </div>
 
                 <div className="font-mono text-[7px] text-[#5b5346]">
-                  0 / 5 COMPLETE
+                  {setupProgress
+                    ? setupProgress.setupStatus ===
+                      'COMPLETED'
+                      ? '5 / 5 COMPLETE'
+                      : `${setupProgress.startedCount} / 5 AREAS STARTED`
+                    : '— / 5 AREAS STARTED'}
                 </div>
               </div>
 
@@ -247,6 +292,12 @@ export default function SetupPage() {
                 {setupSteps.map(
                   (step, index) => {
                     const Icon = step.icon;
+
+                    const progressStep =
+                      setupProgress?.steps.find(
+                        (entry) =>
+                          entry.key === step.key,
+                      );
 
                     return (
                       <button
@@ -287,13 +338,32 @@ export default function SetupPage() {
                           </p>
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-2 font-mono text-[7px] tracking-widest text-[#5b5346] group-hover:text-[#2e4057]">
-                          START
+                        <div
+                          className={`flex shrink-0 items-center gap-2 font-mono text-[7px] tracking-widest ${
+  progressStep?.complete
+    ? 'text-[#3d6b4f]'
+    : progressStep?.started
+      ? 'text-[#2e4057]'
+      : 'text-[#5b5346]'
+}`}
+                        >
+                          {progressStep?.complete
+                            ? 'COMPLETE'
+                            : progressStep?.started
+                              ? 'STARTED'
+                              : 'START'}
 
-                          <ArrowRight
-                            size={14}
-                            strokeWidth={1.7}
-                          />
+                          {progressStep?.complete ? (
+                            <Check
+                              size={13}
+                              strokeWidth={1.8}
+                            />
+                          ) : (
+                            <ArrowRight
+                              size={14}
+                              strokeWidth={1.7}
+                            />
+                          )}
                         </div>
                       </button>
                     );

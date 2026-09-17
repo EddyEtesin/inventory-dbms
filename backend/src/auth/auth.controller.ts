@@ -48,6 +48,35 @@ export class AuthController {
     );
   }
 
+  @Get('setup/progress')
+  @UseGuards(JwtAuthGuard)
+  getSetupProgress(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.authService.getSetupProgress(
+      request.user,
+    );
+  }
+
+  @Post('setup/start')
+  @UseGuards(JwtAuthGuard)
+  startSetup(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.authService.startSetup(
+      request.user,
+    );
+  }
+
+  @Post('setup/complete')
+  @UseGuards(JwtAuthGuard)
+  completeSetup(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.authService.completeSetup(
+      request.user,
+    );
+  }
   @Get('rbac-test')
   @UseGuards(
     JwtAuthGuard,

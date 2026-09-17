@@ -1074,9 +1074,35 @@ export default function OpeningBalancesPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  router.push('/')
-                }
+                onClick={async () => {
+                  const token =
+                    window.localStorage.getItem('accessToken');
+
+                  if (!token) {
+                    router.push('/login');
+                    return;
+                  }
+
+                  try {
+                    setError('');
+
+                    await apiFetch(
+                      '/auth/setup/complete',
+                      token,
+                      {
+                        method: 'POST',
+                      },
+                    );
+
+                    router.push('/');
+                  } catch (err) {
+                    setError(
+                      err instanceof Error
+                        ? extractApiError(err.message)
+                        : 'Unable to complete setup.',
+                    );
+                  }
+                }}
                 className="flex items-center justify-center gap-2 border-2 border-[#3d6b4f] bg-[#3d6b4f] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:opacity-90"
               >
                 FINISH SETUP · DASHBOARD

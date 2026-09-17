@@ -403,6 +403,7 @@ export class AuthService {
                 name: true,
                 industryType: true,
                 status: true,
+                setupStatus: true,
               },
             },
             role: {
@@ -429,6 +430,164 @@ export class AuthService {
     };
   }
 
+  async getSetupProgress(payload: JwtPayload) {
+    await this.getCurrentUser(payload);
+
+    const organization =
+      await this.prisma.organization.findUnique({
+        where: {
+          id: payload.orgId,
+        },
+        select: {
+          id: true,
+          name: true,
+          setupStatus: true,
+        },
+      });
+
+    if (!organization) {
+      throw new UnauthorizedException(
+        'Your organization could not be found.',
+      );
+    }
+
+    const [
+      locationCount,
+      supplierCount,
+      categoryCount,
+      itemCount,
+      openingBalanceCount,
+    ] = await Promise.all([
+      this.prisma.location.count({
+        where: {
+          orgId: payload.orgId,
+        },
+      }),
+
+      this.prisma.supplier.count({
+        where: {
+          orgId: payload.orgId,
+        },
+      }),
+
+      this.prisma.category.count({
+        where: {
+          orgId: payload.orgId,
+        },
+      }),
+
+      this.prisma.item.count({
+        where: {
+          orgId: payload.orgId,
+        },
+      }),
+
+      this.prisma.stockTransaction.count({
+        where: {
+          orgId: payload.orgId,
+          txnType: 'opening_balance',
+        },
+      }),
+    ]);
+
+    const complete =
+      organization.setupStatus === 'COMPLETED';
+
+    const steps = [
+      {
+        key: 'locations',
+        started: locationCount > 0,
+        complete,
+        count: locationCount,
+      },
+      {
+        key: 'suppliers',
+        started: supplierCount > 0,
+        complete,
+        count: supplierCount,
+      },
+      {
+        key: 'categories',
+        started: categoryCount > 0,
+        complete,
+        count: categoryCount,
+      },
+      {
+        key: 'items',
+        started: itemCount > 0,
+        complete,
+        count: itemCount,
+      },
+      {
+        key: 'openingStock',
+        started: openingBalanceCount > 0,
+        complete,
+        count: openingBalanceCount,
+      },
+    ];
+
+    const startedCount = complete
+      ? 5
+      : steps.filter(
+          (step) => step.started,
+        ).length;
+
+    return {
+      setupStatus: organization.setupStatus,
+      startedCount,
+      steps,
+    };
+  }
+
+  async startSetup(payload: JwtPayload) {
+    await this.getCurrentUser(payload);
+
+    const organization =
+      await this.prisma.organization.findUnique({
+        where: {
+          id: payload.orgId,
+        },
+        select: {
+          setupStatus: true,
+        },
+      });
+
+    if (!organization) {
+      throw new UnauthorizedException(
+        'Your organization could not be found.',
+      );
+    }
+
+    if (
+      organization.setupStatus === 'NOT_STARTED'
+    ) {
+      await this.prisma.organization.update({
+        where: {
+          id: payload.orgId,
+        },
+        data: {
+          setupStatus: 'IN_PROGRESS',
+        },
+      });
+    }
+
+    return this.getSetupProgress(payload);
+  }
+
+  async completeSetup(payload: JwtPayload) {
+    await this.getCurrentUser(payload);
+
+    await this.prisma.organization.update({
+      where: {
+        id: payload.orgId,
+      },
+      data: {
+        setupStatus: 'COMPLETED',
+      },
+    });
+
+    return this.getSetupProgress(payload);
+  }
   private async createAuthResponse(
     userId: string,
     email: string,
