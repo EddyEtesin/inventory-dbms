@@ -56,11 +56,6 @@ const navItems = [
     href: '/reports',
     icon: BarChart3,
   },
-  {
-    label: 'SETUP',
-    href: '/setup',
-    icon: Wrench,
-  },
 ];
 
 export default function InventorySidebar({

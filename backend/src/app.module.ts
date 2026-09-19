@@ -9,6 +9,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { ItemsModule } from './items/items.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { ReportsModule } from './reports/reports.module';
+import { AdministrationModule } from './administration/administration.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ReportsModule } from './reports/reports.module';
     }),
     PrismaModule,
     AuthModule,
+    AdministrationModule,
     CategoriesModule,
     LocationsModule,
     SuppliersModule,

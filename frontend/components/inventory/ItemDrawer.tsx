@@ -18,6 +18,7 @@ type OrganizationLocation = {
   id: string;
   name: string;
   locationType: string;
+  status: string;
 };
 
 type ItemDrawerProps = {
@@ -40,6 +41,9 @@ type ItemDrawerProps = {
   transactions: Transaction[];
   transactionLoading: boolean;
   transactionPage: number;
+  transactionTotalPages: number;
+  hasNextTransactionPage: boolean;
+  hasPreviousTransactionPage: boolean;
 
   onClose: () => void;
 
@@ -79,6 +83,10 @@ type ItemDrawerProps = {
 
   onPreviousPage: () => void;
   onNextPage: () => void;
+
+  onEdit?: () => void;
+  onArchive?: () => void;
+  itemArchived?: boolean;
 };
 
 export default function ItemDrawer({
@@ -100,7 +108,9 @@ export default function ItemDrawer({
   transactions,
   transactionLoading,
   transactionPage,
-
+  transactionTotalPages,
+  hasNextTransactionPage,
+  hasPreviousTransactionPage,
   onClose,
 
   onLocationSelect,
@@ -123,6 +133,10 @@ export default function ItemDrawer({
 
   onPreviousPage,
   onNextPage,
+
+  onEdit,
+  onArchive,
+  itemArchived = false,
 }: ItemDrawerProps) {
   if (!selectedItem) {
     return null;
@@ -140,6 +154,7 @@ export default function ItemDrawer({
 
       {/* DRAWER */}
       <aside className="fixed right-0 top-0 z-50 h-screen w-full max-w-[470px] overflow-y-auto border-l-2 border-[#2b2620] bg-[#f5f0e3] p-5 shadow-[-12px_0_30px_rgba(0,0,0,0.22)]">
+
         {/* CLOSE */}
         <button
           type="button"
@@ -351,19 +366,30 @@ export default function ItemDrawer({
                 </option>
 
                 {selectedItem.locationBreakdown.map(
-                  (location) => (
-                    <option
-                      key={
-                        location.locationId
-                      }
-                      value={
-                        location.locationId
-                      }
-                    >
-                      {location.locationName}
-                    </option>
-                  ),
-                )}
+                      (location) => {
+                        const organizationLocation =
+                          organizationLocations.find(
+                            (entry) =>
+                              entry.id === location.locationId,
+                          );
+
+                        const isInactive =
+                          organizationLocation?.status !== 'active';
+
+                        return (
+                          <option
+                            key={location.locationId}
+                            value={location.locationId}
+                            disabled={isInactive}
+                          >
+                            {location.locationName}
+                            {isInactive
+                              ? ' · INACTIVE'
+                              : ''}
+                          </option>
+                        );
+                      },
+                    )}
               </select>
             </div>
 
@@ -391,15 +417,20 @@ export default function ItemDrawer({
                   {organizationLocations
                     .filter(
                       (location) =>
-                        location.id !==
-                        operationLocationId,
+                        location.id !== operationLocationId,
                     )
                     .map((location) => (
                       <option
                         key={location.id}
                         value={location.id}
+                        disabled={
+                          location.status !== 'active'
+                        }
                       >
                         {location.name}
+                        {location.status !== 'active'
+                          ? ' · INACTIVE'
+                          : ''}
                       </option>
                     ))}
                 </select>
@@ -445,6 +476,30 @@ export default function ItemDrawer({
               )}
             </div>
 
+            {/* REFERENCE */}
+            <div className="mt-4">
+              <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
+                REFERENCE
+              </label>
+
+              <input
+                type="text"
+                value={reference}
+                onChange={(event) =>
+                  onReferenceChange(
+                    event.target.value,
+                  )
+                }
+                className="w-full border-0 border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[10px] outline-none"
+                placeholder="e.g. PO-2026-0042"
+              />
+
+              <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
+                Optional purchase order, request,
+                issue, or other reference.
+              </div>
+            </div>
+
             {/* NOTES */}
             <div className="mt-4">
               <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
@@ -485,6 +540,38 @@ export default function ItemDrawer({
           </form>
         )}
 
+        {/* ITEM MANAGEMENT */}
+        {(onEdit || onArchive) && (
+          <div className="mt-5 border-t border-dashed border-[#b7a87e] pt-4">
+            <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
+              ITEM MANAGEMENT
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="border border-[#2e4057] px-3 py-2.5 font-mono text-[8px] tracking-widest text-[#2e4057] hover:bg-[#2e4057] hover:text-[#f5f0e3]"
+                >
+                  EDIT ITEM
+                </button>
+              )}
+
+              {onArchive &&
+                !itemArchived && (
+                  <button
+                    type="button"
+                    onClick={onArchive}
+                    className="border border-[#a63a2e] px-3 py-2.5 font-mono text-[8px] tracking-widest text-[#a63a2e] hover:bg-[#a63a2e] hover:text-[#f5f0e3]"
+                  >
+                    ARCHIVE ITEM
+                  </button>
+                )}
+            </div>
+          </div>
+        )}
+
         {/* TRANSACTION HISTORY */}
         <div className="mt-5 border-t border-dashed border-[#b7a87e] pt-4">
           <div className="flex items-end justify-between">
@@ -500,7 +587,7 @@ export default function ItemDrawer({
 
             <div className="font-mono text-[7px] text-[#5b5346]">
               {operationLocationId
-                ? `PAGE ${transactionPage}`
+                ? `PAGE ${transactionPage} OF ${transactionTotalPages}`
                 : ''}
             </div>
           </div>
@@ -580,10 +667,11 @@ export default function ItemDrawer({
                 <button
                   type="button"
                   disabled={
-                    transactionPage <= 1
+                    !hasPreviousTransactionPage ||
+                    transactionLoading
                   }
                   onClick={onPreviousPage}
-                  className="border border-[#2b2620] px-2 py-1 font-mono text-[7px] disabled:opacity-30"
+                  className="border border-[#2b2620] px-2 py-1 font-mono text-[7px] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   ← PREVIOUS
                 </button>
@@ -592,9 +680,10 @@ export default function ItemDrawer({
                   type="button"
                   onClick={onNextPage}
                   disabled={
-                    transactions.length === 0
+                    !hasNextTransactionPage ||
+                    transactionLoading
                   }
-                  className="border border-[#2b2620] px-2 py-1 font-mono text-[7px] disabled:opacity-30"
+                  className="border border-[#2b2620] px-2 py-1 font-mono text-[7px] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   NEXT →
                 </button>

@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -22,4 +23,9 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsUUID()
   parentId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['active', 'inactive'])
+  status?: string;
 }

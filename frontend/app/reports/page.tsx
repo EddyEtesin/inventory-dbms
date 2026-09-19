@@ -33,17 +33,19 @@ type CategoryOption = {
   name: string;
 };
 
+type ReportPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
 type ReportResponse = {
   summary: StockMovementSummary;
   data: StockMovementRow[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
-  };
+  pagination: ReportPagination;
 };
 
 type CollectionResponse<T> =
@@ -69,6 +71,8 @@ const emptySummary: StockMovementSummary = {
   totalTransferred: 0,
 };
 
+const PAGE_SIZE = 25;
+
 function getCollectionData<T>(
   response: CollectionResponse<T>,
 ): T[] {
@@ -78,33 +82,58 @@ function getCollectionData<T>(
 }
 
 export default function ReportsPage() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] =
+    useState(false);
 
   const [filters, setFilters] =
     useState<ReportFilterState>(initialFilters);
 
-  const [locations, setLocations] = useState<
-    LocationOption[]
-  >([]);
+  const [locations, setLocations] =
+    useState<LocationOption[]>([]);
 
-  const [items, setItems] = useState<ItemOption[]>([]);
-  const [categories, setCategories] = useState<
-    CategoryOption[]
-  >([]);
+  const [items, setItems] =
+    useState<ItemOption[]>([]);
 
-  const [rows, setRows] = useState<StockMovementRow[]>([]);
+  const [categories, setCategories] =
+    useState<CategoryOption[]>([]);
+
+  const [rows, setRows] =
+    useState<StockMovementRow[]>([]);
+
   const [summary, setSummary] =
     useState<StockMovementSummary>(emptySummary);
 
-  const [loading, setLoading] = useState(true);
-  const [reportError, setReportError] = useState('');
+  const [page, setPage] =
+    useState(1);
+
+  const [totalPages, setTotalPages] =
+    useState(1);
+
+  const [totalRecords, setTotalRecords] =
+    useState(0);
+
+  const [hasNextPage, setHasNextPage] =
+    useState(false);
+
+  const [hasPreviousPage, setHasPreviousPage] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [reportError, setReportError] =
+    useState('');
 
   async function loadReferenceData() {
     const token =
-      window.localStorage.getItem('accessToken');
+      window.localStorage.getItem(
+        'accessToken',
+      );
 
     if (!token) {
-      throw new Error('Please sign in first.');
+      throw new Error(
+        'Please sign in first.',
+      );
     }
 
     const [
@@ -112,48 +141,69 @@ export default function ReportsPage() {
       itemsResponse,
       categoriesResponse,
     ] = await Promise.all([
-      apiFetch<CollectionResponse<LocationOption>>(
-        '/locations',
-        token,
-      ),
-      apiFetch<CollectionResponse<ItemOption>>(
-        '/items',
-        token,
-      ),
-      apiFetch<CollectionResponse<CategoryOption>>(
-        '/categories',
-        token,
-      ),
+      apiFetch<
+        CollectionResponse<LocationOption>
+      >('/locations', token),
+
+      apiFetch<
+        CollectionResponse<ItemOption>
+      >('/items', token),
+
+      apiFetch<
+        CollectionResponse<CategoryOption>
+      >('/categories', token),
     ]);
 
     setLocations(
-      getCollectionData(locationsResponse),
+      getCollectionData(
+        locationsResponse,
+      ),
     );
 
-    setItems(getCollectionData(itemsResponse));
+    setItems(
+      getCollectionData(
+        itemsResponse,
+      ),
+    );
+
     setCategories(
-      getCollectionData(categoriesResponse),
+      getCollectionData(
+        categoriesResponse,
+      ),
     );
   }
 
   async function loadReport(
     nextFilters: ReportFilterState = filters,
+    nextPage = 1,
   ) {
     try {
       setLoading(true);
       setReportError('');
 
       const token =
-        window.localStorage.getItem('accessToken');
+        window.localStorage.getItem(
+          'accessToken',
+        );
 
       if (!token) {
-        throw new Error('Please sign in first.');
+        throw new Error(
+          'Please sign in first.',
+        );
       }
 
-      const params = new URLSearchParams();
+      const params =
+        new URLSearchParams();
 
-      params.set('page', '1');
-      params.set('pageSize', '25');
+      params.set(
+        'page',
+        String(nextPage),
+      );
+
+      params.set(
+        'pageSize',
+        String(PAGE_SIZE),
+      );
 
       if (nextFilters.fromDate) {
         params.set(
@@ -203,8 +253,42 @@ export default function ReportsPage() {
           token,
         );
 
-      setRows(response.data ?? []);
-      setSummary(response.summary ?? emptySummary);
+      setRows(
+        response.data ?? [],
+      );
+
+      setSummary(
+        response.summary ??
+          emptySummary,
+      );
+
+      const pagination =
+        response.pagination;
+
+      setPage(
+        pagination?.page ??
+          nextPage,
+      );
+
+      setTotalPages(
+        pagination?.totalPages ??
+          1,
+      );
+
+      setTotalRecords(
+        pagination?.total ??
+          0,
+      );
+
+      setHasNextPage(
+        pagination?.hasNextPage ??
+          false,
+      );
+
+      setHasPreviousPage(
+        pagination?.hasPreviousPage ??
+          false,
+      );
     } catch (err) {
       setReportError(
         err instanceof Error
@@ -220,13 +304,18 @@ export default function ReportsPage() {
     async function initialize() {
       try {
         await loadReferenceData();
-        await loadReport(initialFilters);
+
+        await loadReport(
+          initialFilters,
+          1,
+        );
       } catch (err) {
         setReportError(
           err instanceof Error
             ? err.message
             : 'Unable to load Reports.',
         );
+
         setLoading(false);
       }
     }
@@ -234,17 +323,46 @@ export default function ReportsPage() {
     initialize();
   }, []);
 
-  const handleReset = () => {
+  function handleGenerate() {
+    setPage(1);
+    loadReport(filters, 1);
+  }
+
+  function handleReset() {
     setFilters(initialFilters);
-    loadReport(initialFilters);
-  };
+    setPage(1);
+    loadReport(
+      initialFilters,
+      1,
+    );
+  }
+
+  function handlePageChange(
+    nextPage: number,
+  ) {
+    if (
+      nextPage < 1 ||
+      nextPage > totalPages ||
+      nextPage === page ||
+      loading
+    ) {
+      return;
+    }
+
+    loadReport(
+      filters,
+      nextPage,
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
       <InventorySidebar
         collapsed={collapsed}
         onToggle={() =>
-          setCollapsed((value) => !value)
+          setCollapsed(
+            (value) => !value,
+          )
         }
       />
 
@@ -272,9 +390,7 @@ export default function ReportsPage() {
               categories={categories}
               loading={loading}
               onChange={setFilters}
-              onGenerate={() =>
-                loadReport(filters)
-              }
+              onGenerate={handleGenerate}
               onReset={handleReset}
             />
 
@@ -282,6 +398,17 @@ export default function ReportsPage() {
               rows={rows}
               summary={summary}
               loading={loading}
+              page={page}
+              totalPages={totalPages}
+              totalRecords={totalRecords}
+              pageSize={PAGE_SIZE}
+              hasNextPage={hasNextPage}
+              hasPreviousPage={
+                hasPreviousPage
+              }
+              onPageChange={
+                handlePageChange
+              }
             />
           </div>
         </div>

@@ -17,7 +17,9 @@ export class LocationsService {
     const locationType = dto.locationType.trim().toLowerCase();
 
     if (!name) {
-      throw new BadRequestException('Location name is required.');
+      throw new BadRequestException(
+        'Location name is required.',
+      );
     }
 
     if (!locationType) {
@@ -27,24 +29,28 @@ export class LocationsService {
     }
 
     if (dto.parentId) {
-      const parent = await this.prisma.location.findFirst({
-        where: {
-          id: dto.parentId,
-          orgId,
-        },
-      });
+      const parent =
+        await this.prisma.location.findFirst({
+          where: {
+            id: dto.parentId,
+            orgId,
+          },
+        });
 
       if (!parent) {
-        throw new NotFoundException('Parent location not found.');
+        throw new NotFoundException(
+          'Parent location not found.',
+        );
       }
     }
 
-    const duplicate = await this.prisma.location.findFirst({
-      where: {
-        orgId,
-        name,
-      },
-    });
+    const duplicate =
+      await this.prisma.location.findFirst({
+        where: {
+          orgId,
+          name,
+        },
+      });
 
     if (duplicate) {
       throw new ConflictException(
@@ -76,32 +82,38 @@ export class LocationsService {
     });
   }
 
-  async findOne(orgId: string, id: string) {
-    const location = await this.prisma.location.findFirst({
-      where: {
-        id,
-        orgId,
-      },
-      include: {
-        parent: true,
-        children: true,
-        inventories: {
-          include: {
-            item: {
-              select: {
-                id: true,
-                sku: true,
-                name: true,
-                status: true,
+  async findOne(
+    orgId: string,
+    id: string,
+  ) {
+    const location =
+      await this.prisma.location.findFirst({
+        where: {
+          id,
+          orgId,
+        },
+        include: {
+          parent: true,
+          children: true,
+          inventories: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  sku: true,
+                  name: true,
+                  status: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
     if (!location) {
-      throw new NotFoundException('Location not found.');
+      throw new NotFoundException(
+        'Location not found.',
+      );
     }
 
     return location;
@@ -112,15 +124,18 @@ export class LocationsService {
     id: string,
     dto: UpdateLocationDto,
   ) {
-    const existing = await this.prisma.location.findFirst({
-      where: {
-        id,
-        orgId,
-      },
-    });
+    const existing =
+      await this.prisma.location.findFirst({
+        where: {
+          id,
+          orgId,
+        },
+      });
 
     if (!existing) {
-      throw new NotFoundException('Location not found.');
+      throw new NotFoundException(
+        'Location not found.',
+      );
     }
 
     if (dto.parentId === id) {
@@ -130,18 +145,21 @@ export class LocationsService {
     }
 
     if (dto.parentId) {
-      const parent = await this.prisma.location.findFirst({
-        where: {
-          id: dto.parentId,
-          orgId,
-        },
-        select: {
-          id: true,
-        },
-      });
+      const parent =
+        await this.prisma.location.findFirst({
+          where: {
+            id: dto.parentId,
+            orgId,
+          },
+          select: {
+            id: true,
+          },
+        });
 
       if (!parent) {
-        throw new NotFoundException('Parent location not found.');
+        throw new NotFoundException(
+          'Parent location not found.',
+        );
       }
 
       await this.ensureNoCircularHierarchy(
@@ -154,15 +172,16 @@ export class LocationsService {
     const newName = dto.name?.trim();
 
     if (newName) {
-      const duplicate = await this.prisma.location.findFirst({
-        where: {
-          orgId,
-          name: newName,
-          NOT: {
-            id,
+      const duplicate =
+        await this.prisma.location.findFirst({
+          where: {
+            orgId,
+            name: newName,
+            NOT: {
+              id,
+            },
           },
-        },
-      });
+        });
 
       if (duplicate) {
         throw new ConflictException(
@@ -171,9 +190,10 @@ export class LocationsService {
       }
     }
 
-    const newLocationType = dto.locationType
-      ?.trim()
-      .toLowerCase();
+    const newLocationType =
+      dto.locationType
+        ?.trim()
+        .toLowerCase();
 
     return this.prisma.location.update({
       where: {
@@ -189,33 +209,42 @@ export class LocationsService {
         ...(dto.parentId !== undefined && {
           parentId: dto.parentId,
         }),
+        ...(dto.status !== undefined && {
+          status: dto.status,
+        }),
       },
     });
   }
 
-  async remove(orgId: string, id: string) {
-    const location = await this.prisma.location.findFirst({
-      where: {
-        id,
-        orgId,
-      },
-      include: {
-        children: {
-          select: {
-            id: true,
+  async remove(
+    orgId: string,
+    id: string,
+  ) {
+    const location =
+      await this.prisma.location.findFirst({
+        where: {
+          id,
+          orgId,
+        },
+        include: {
+          children: {
+            select: {
+              id: true,
+            },
+          },
+          inventories: {
+            select: {
+              id: true,
+            },
+            take: 1,
           },
         },
-        inventories: {
-          select: {
-            id: true,
-          },
-          take: 1,
-        },
-      },
-    });
+      });
 
     if (!location) {
-      throw new NotFoundException('Location not found.');
+      throw new NotFoundException(
+        'Location not found.',
+      );
     }
 
     if (location.children.length > 0) {
@@ -237,7 +266,8 @@ export class LocationsService {
     });
 
     return {
-      message: 'Location deleted successfully.',
+      message:
+        'Location deleted successfully.',
     };
   }
 
@@ -246,7 +276,9 @@ export class LocationsService {
     locationId: string,
     proposedParentId: string,
   ): Promise<void> {
-    let currentParentId: string | null = proposedParentId;
+    let currentParentId:
+      | string
+      | null = proposedParentId;
 
     const visited = new Set<string>();
 
@@ -265,7 +297,9 @@ export class LocationsService {
         );
       }
 
-      const parent: { parentId: string | null } | null =
+      const parent: {
+        parentId: string | null;
+      } | null =
         await this.prisma.location.findFirst({
           where: {
             id: currentParentId,
@@ -282,7 +316,8 @@ export class LocationsService {
         );
       }
 
-      currentParentId = parent.parentId;
+      currentParentId =
+        parent.parentId;
     }
   }
 }

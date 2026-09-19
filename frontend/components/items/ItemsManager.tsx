@@ -183,7 +183,7 @@ function formatLocationType(
     .toUpperCase();
 }
 
-export default function SetupItemsPage() {
+export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'module' }) {
   const router = useRouter();
 
   const [organization, setOrganization] =
@@ -1010,7 +1010,7 @@ export default function SetupItemsPage() {
             </div>
 
             <div className="hidden border-2 border-[#a63a2e] px-2.5 py-1 font-mono text-[7px] tracking-widest text-[#a63a2e] sm:block">
-              ITEM SETUP · {industryLabel}
+              {mode === 'setup' ? 'ITEM SETUP' : 'ITEM REGISTER'} · {industryLabel}
             </div>
           </div>
         </header>
@@ -1024,7 +1024,7 @@ export default function SetupItemsPage() {
             <div className="flex flex-col gap-4 border-b border-dashed border-[#b7a87e] pb-5 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                  SETUP · 04 / 05
+                  {mode === 'setup' ? 'SETUP · 04 / 05' : 'ITEM REGISTER'}
                 </div>
 
                 <h1 className="mt-1 font-mono text-[28px] leading-tight">
@@ -1410,7 +1410,7 @@ export default function SetupItemsPage() {
                   size={14}
                   strokeWidth={1.7}
                 />
-                PREVIOUS · CATEGORIES
+                {mode === 'setup' ? 'PREVIOUS · CATEGORIES' : 'BACK TO INVENTORY'}
               </button>
 
               <button
@@ -1422,7 +1422,7 @@ export default function SetupItemsPage() {
                 }
                 className="flex items-center justify-center gap-2 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620]"
               >
-                NEXT · OPENING BALANCES
+                {mode === 'setup' ? 'NEXT · OPENING BALANCES' : 'OPEN INVENTORY'}
                 <ArrowRight
                   size={14}
                   strokeWidth={1.7}
@@ -1957,3 +1957,6 @@ function Field({
     </label>
   );
 }
+
+
+

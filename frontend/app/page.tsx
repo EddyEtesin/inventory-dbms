@@ -16,7 +16,6 @@ import InventorySidebar from '../components/inventory/InventorySidebar';
 import InventoryStats from '../components/inventory/InventoryStats';
 import ItemDrawer from '../components/inventory/ItemDrawer';
 import QuickActions from '../components/inventory/QuickActions';
-import RecentActivity from '../components/inventory/RecentActivity';
 
 import type {
   Operation,
@@ -32,6 +31,7 @@ type OrganizationLocation = {
   id: string;
   name: string;
   locationType: string;
+  status: string;
 };
 
 export default function InventoryPage() {
@@ -99,6 +99,15 @@ export default function InventoryPage() {
 
   const [transactionPage, setTransactionPage] =
     useState(1);
+
+  const [transactionTotalPages, setTransactionTotalPages] =
+    useState(1);
+
+  const [hasNextTransactionPage, setHasNextTransactionPage] =
+    useState(false);
+
+  const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
+    useState(false);
 
   const pageSize = 10;
 
@@ -238,6 +247,18 @@ export default function InventoryPage() {
       setTransactionPage(
         response.pagination.page,
       );
+
+      setTransactionTotalPages(
+        response.pagination.totalPages,
+      );
+
+      setHasNextTransactionPage(
+        response.pagination.hasNextPage,
+      );
+
+      setHasPreviousTransactionPage(
+        response.pagination.hasPreviousPage,
+      );
     } catch (err) {
       console.error(
         'Unable to load transactions:',
@@ -254,6 +275,11 @@ export default function InventoryPage() {
     setSelectedItem(item);
     setOperation(null);
     setOperationError('');
+
+    setTransactionPage(1);
+    setTransactionTotalPages(1);
+    setHasNextTransactionPage(false);
+    setHasPreviousTransactionPage(false);
 
     const firstLocation =
       item.locationBreakdown[0];
@@ -282,6 +308,10 @@ export default function InventoryPage() {
     setSelectedItem(null);
     setOperation(null);
     setTransactions([]);
+    setTransactionPage(1);
+    setTransactionTotalPages(1);
+    setHasNextTransactionPage(false);
+    setHasPreviousTransactionPage(false);
     resetOperationForm();
   };
 
@@ -542,6 +572,11 @@ export default function InventoryPage() {
         locationId,
       );
 
+      setTransactionPage(1);
+      setTransactionTotalPages(1);
+      setHasNextTransactionPage(false);
+      setHasPreviousTransactionPage(false);
+
       await loadTransactions(
         selectedItem,
         locationId,
@@ -549,38 +584,39 @@ export default function InventoryPage() {
       );
     };
 
-  const handlePreviousPage =
-    () => {
-      if (
-        !selectedItem ||
-        !operationLocationId ||
-        transactionPage <= 1
-      ) {
-        return;
-      }
+  const handlePreviousPage = () => {
+    if (
+      !selectedItem ||
+      !operationLocationId ||
+      !hasPreviousTransactionPage ||
+      transactionLoading
+    ) {
+      return;
+    }
 
-      loadTransactions(
-        selectedItem,
-        operationLocationId,
-        transactionPage - 1,
-      );
-    };
+    loadTransactions(
+      selectedItem,
+      operationLocationId,
+      transactionPage - 1,
+    );
+  };
 
-  const handleNextPage =
-    () => {
-      if (
-        !selectedItem ||
-        !operationLocationId
-      ) {
-        return;
-      }
+  const handleNextPage = () => {
+    if (
+      !selectedItem ||
+      !operationLocationId ||
+      !hasNextTransactionPage ||
+      transactionLoading
+    ) {
+      return;
+    }
 
-      loadTransactions(
-        selectedItem,
-        operationLocationId,
-        transactionPage + 1,
-      );
-    };
+    loadTransactions(
+      selectedItem,
+      operationLocationId,
+      transactionPage + 1,
+    );
+  };
 
   return (
     <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
@@ -661,9 +697,6 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* RECENT ACTIVITY */}
-            <RecentActivity />
-
             {/* FOOTER */}
             <footer className="mt-4 border-t border-dashed border-[#b7a87e] pt-2 font-mono text-[7px] text-[#5b5346]">
               <div className="flex justify-between">
@@ -717,6 +750,15 @@ export default function InventoryPage() {
         }
         transactionPage={
           transactionPage
+        }
+        transactionTotalPages={
+          transactionTotalPages
+        }
+        hasNextTransactionPage={
+          hasNextTransactionPage
+        }
+        hasPreviousTransactionPage={
+          hasPreviousTransactionPage
         }
         onClose={
           closeDrawer

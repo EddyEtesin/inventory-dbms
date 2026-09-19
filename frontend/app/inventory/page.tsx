@@ -28,6 +28,7 @@ type OrganizationLocation = {
   id: string;
   name: string;
   locationType: string;
+  status: string;
 };
 
 export default function InventoryPage() {
@@ -89,9 +90,18 @@ export default function InventoryPage() {
     useState(false);
 
   const [transactionPage, setTransactionPage] =
-    useState(1);
+  useState(1);
 
-  const pageSize = 10;
+  const [transactionTotalPages, setTransactionTotalPages] =
+  useState(1);
+
+  const [hasNextTransactionPage, setHasNextTransactionPage] =
+  useState(false);
+  
+  const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
+  useState(false);
+
+  const pageSize = 10;;
 
   // --------------------------------------------------
   // LOAD INVENTORY
@@ -166,8 +176,35 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    loadInventory();
-    loadLocations();
+    async function initializeInventory() {
+      const loadedItems =
+        await loadInventory();
+
+      await loadLocations();
+
+      const itemId =
+        new URLSearchParams(
+          window.location.search,
+        ).get('item');
+
+      if (!itemId) {
+        return;
+      }
+
+      const requestedItem =
+        loadedItems.find(
+          (item) =>
+            item.id === itemId,
+        );
+
+      if (requestedItem) {
+        await openItem(
+          requestedItem,
+        );
+      }
+    }
+
+    initializeInventory();
   }, []);
 
   // --------------------------------------------------
@@ -223,11 +260,25 @@ export default function InventoryPage() {
           token,
         );
 
-      setTransactions(response.data);
+      setTransactions(
+          response.data,
+        );
 
-      setTransactionPage(
-        response.pagination.page,
-      );
+        setTransactionPage(
+          response.pagination.page,
+        );
+
+        setTransactionTotalPages(
+          response.pagination.totalPages,
+        );
+
+        setHasNextTransactionPage(
+          response.pagination.hasNextPage,
+        );
+
+        setHasPreviousTransactionPage(
+          response.pagination.hasPreviousPage,
+        );
     } catch (err) {
       console.error(
         'Unable to load transactions:',
@@ -574,36 +625,36 @@ export default function InventoryPage() {
   // --------------------------------------------------
 
   async function handlePreviousPage() {
-    if (
-      !selectedItem ||
-      !operationLocationId ||
-      transactionPage <= 1
-    ) {
-      return;
-    }
-
-    await loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage - 1,
-    );
+  if (
+    !selectedItem ||
+    !operationLocationId ||
+    !hasPreviousTransactionPage
+  ) {
+    return;
   }
 
-  async function handleNextPage() {
-    if (
-      !selectedItem ||
-      !operationLocationId
-    ) {
-      return;
-    }
+  await loadTransactions(
+    selectedItem,
+    operationLocationId,
+    transactionPage - 1,
+  );
+}
 
-    await loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage + 1,
-    );
+async function handleNextPage() {
+  if (
+    !selectedItem ||
+    !operationLocationId ||
+    !hasNextTransactionPage
+  ) {
+    return;
   }
 
+  await loadTransactions(
+    selectedItem,
+    operationLocationId,
+    transactionPage + 1,
+  );
+}
   // --------------------------------------------------
   // RENDER
   // --------------------------------------------------
@@ -724,6 +775,16 @@ export default function InventoryPage() {
         }
         transactionPage={
           transactionPage
+        }
+
+        transactionTotalPages={
+          transactionTotalPages
+        }
+        hasNextTransactionPage={
+          hasNextTransactionPage
+        }
+        hasPreviousTransactionPage={
+          hasPreviousTransactionPage
         }
         onClose={closeDrawer}
         onLocationSelect={

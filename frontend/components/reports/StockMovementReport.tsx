@@ -51,23 +51,41 @@ type StockMovementReportProps = {
   rows: StockMovementRow[];
   summary: StockMovementSummary;
   loading: boolean;
+  page: number;
+  totalPages: number;
+  totalRecords: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  onPageChange: (
+    page: number,
+  ) => void;
 };
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    'en-GB',
+    {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    },
+  ).format(new Date(value));
 }
 
-function formatQuantity(quantity: number) {
-  return `${quantity > 0 ? '+' : ''}${quantity}`;
+function formatQuantity(
+  quantity: number,
+) {
+  return `${
+    quantity > 0 ? '+' : ''
+  }${quantity}`;
 }
 
-function getActionClass(txnType: string) {
+function getActionClass(
+  txnType: string,
+) {
   switch (txnType) {
     case 'receive':
     case 'opening_balance':
@@ -88,13 +106,22 @@ function getActionClass(txnType: string) {
   }
 }
 
-function ActionIcon({ txnType }: { txnType: string }) {
+function ActionIcon({
+  txnType,
+}: {
+  txnType: string;
+}) {
   if (
     txnType === 'receive' ||
     txnType === 'opening_balance' ||
     txnType === 'return'
   ) {
-    return <ArrowDownToLine size={13} strokeWidth={1.7} />;
+    return (
+      <ArrowDownToLine
+        size={13}
+        strokeWidth={1.7}
+      />
+    );
   }
 
   if (
@@ -103,14 +130,31 @@ function ActionIcon({ txnType }: { txnType: string }) {
     txnType === 'expiry' ||
     txnType === 'loss'
   ) {
-    return <ArrowUpFromLine size={13} strokeWidth={1.7} />;
+    return (
+      <ArrowUpFromLine
+        size={13}
+        strokeWidth={1.7}
+      />
+    );
   }
 
-  if (txnType === 'transfer') {
-    return <ArrowLeftRight size={13} strokeWidth={1.7} />;
+  if (
+    txnType === 'transfer'
+  ) {
+    return (
+      <ArrowLeftRight
+        size={13}
+        strokeWidth={1.7}
+      />
+    );
   }
 
-  return <ClipboardList size={13} strokeWidth={1.7} />;
+  return (
+    <ClipboardList
+      size={13}
+      strokeWidth={1.7}
+    />
+  );
 }
 
 function SummaryCard({
@@ -129,7 +173,9 @@ function SummaryCard({
           {label}
         </span>
 
-        <span className="text-[#2e4057]">{icon}</span>
+        <span className="text-[#2e4057]">
+          {icon}
+        </span>
       </div>
 
       <div className="mt-2 font-mono text-[19px] text-[#2b2620]">
@@ -139,11 +185,85 @@ function SummaryCard({
   );
 }
 
+function getVisiblePages(
+  page: number,
+  totalPages: number,
+) {
+  if (totalPages <= 7) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  if (page <= 4) {
+    return [
+      1,
+      2,
+      3,
+      4,
+      5,
+      'ellipsis',
+      totalPages,
+    ] as const;
+  }
+
+  if (page >= totalPages - 3) {
+    return [
+      1,
+      'ellipsis',
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ] as const;
+  }
+
+  return [
+    1,
+    'ellipsis',
+    page - 1,
+    page,
+    page + 1,
+    'ellipsis',
+    totalPages,
+  ] as const;
+}
+
 export default function StockMovementReport({
   rows,
   summary,
   loading,
+  page,
+  totalPages,
+  totalRecords,
+  pageSize,
+  hasNextPage,
+  hasPreviousPage,
+  onPageChange,
 }: StockMovementReportProps) {
+  const startRecord =
+    totalRecords === 0
+      ? 0
+      : (page - 1) *
+          pageSize +
+        1;
+
+  const endRecord =
+    totalRecords === 0
+      ? 0
+      : Math.min(
+          page * pageSize,
+          totalRecords,
+        );
+
+  const visiblePages =
+    getVisiblePages(
+      page,
+      totalPages,
+    );
+
   return (
     <section className="border border-[#2b2620]/20 bg-[#f5f0e3]">
       <div className="border-b border-[#2b2620]/15 px-4 py-3">
@@ -169,32 +289,67 @@ export default function StockMovementReport({
       <div className="grid gap-px bg-[#2b2620]/10 md:grid-cols-5">
         <SummaryCard
           label="TRANSACTIONS"
-          value={summary.transactionCount}
-          icon={<ClipboardList size={14} strokeWidth={1.7} />}
+          value={
+            summary.transactionCount
+          }
+          icon={
+            <ClipboardList
+              size={14}
+              strokeWidth={1.7}
+            />
+          }
         />
 
         <SummaryCard
           label="RECEIVED"
-          value={summary.totalReceived}
-          icon={<ArrowDownToLine size={14} strokeWidth={1.7} />}
+          value={
+            summary.totalReceived
+          }
+          icon={
+            <ArrowDownToLine
+              size={14}
+              strokeWidth={1.7}
+            />
+          }
         />
 
         <SummaryCard
           label="ISSUED"
-          value={summary.totalIssued}
-          icon={<ArrowUpFromLine size={14} strokeWidth={1.7} />}
+          value={
+            summary.totalIssued
+          }
+          icon={
+            <ArrowUpFromLine
+              size={14}
+              strokeWidth={1.7}
+            />
+          }
         />
 
         <SummaryCard
           label="ADJUSTMENTS"
-          value={summary.totalAdjusted}
-          icon={<ClipboardList size={14} strokeWidth={1.7} />}
+          value={
+            summary.totalAdjusted
+          }
+          icon={
+            <ClipboardList
+              size={14}
+              strokeWidth={1.7}
+            />
+          }
         />
 
         <SummaryCard
           label="TRANSFERRED"
-          value={summary.totalTransferred}
-          icon={<ArrowLeftRight size={14} strokeWidth={1.7} />}
+          value={
+            summary.totalTransferred
+          }
+          icon={
+            <ArrowLeftRight
+              size={14}
+              strokeWidth={1.7}
+            />
+          }
         />
       </div>
 
@@ -205,21 +360,27 @@ export default function StockMovementReport({
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 DATE
               </th>
+
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 ITEM
               </th>
+
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 LOCATION
               </th>
+
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 ACTION
               </th>
+
               <th className="px-4 py-3 text-right font-mono text-[8px] tracking-[0.14em]">
                 QTY
               </th>
+
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 REFERENCE
               </th>
+
               <th className="px-4 py-3 font-mono text-[8px] tracking-[0.14em]">
                 BY
               </th>
@@ -252,7 +413,9 @@ export default function StockMovementReport({
                   className="border-b border-[#2b2620]/10 hover:bg-[#ddd0b8]/35"
                 >
                   <td className="px-4 py-3 align-top font-mono text-[9px] text-[#5b5346]">
-                    {formatDate(row.date)}
+                    {formatDate(
+                      row.date,
+                    )}
                   </td>
 
                   <td className="px-4 py-3 align-top">
@@ -263,15 +426,32 @@ export default function StockMovementReport({
                     <div className="mt-1 font-mono text-[8px] tracking-wider text-[#5b5346]">
                       {row.item.sku}
                     </div>
+
+                    {row.item
+                      .category && (
+                      <div className="mt-1 font-mono text-[7px] uppercase tracking-wider text-[#8a806f]">
+                        {
+                          row.item
+                            .category
+                            .name
+                        }
+                      </div>
+                    )}
                   </td>
 
                   <td className="px-4 py-3 align-top">
                     <div className="font-mono text-[9px] text-[#2b2620]">
-                      {row.location.name}
+                      {
+                        row.location
+                          .name
+                      }
                     </div>
 
                     <div className="mt-1 font-mono text-[8px] uppercase tracking-wider text-[#5b5346]">
-                      {row.location.locationType}
+                      {
+                        row.location
+                          .locationType
+                      }
                     </div>
                   </td>
 
@@ -281,7 +461,12 @@ export default function StockMovementReport({
                         row.txnType,
                       )}`}
                     >
-                      <ActionIcon txnType={row.txnType} />
+                      <ActionIcon
+                        txnType={
+                          row.txnType
+                        }
+                      />
+
                       {row.action}
                     </div>
 
@@ -294,22 +479,28 @@ export default function StockMovementReport({
 
                   <td
                     className={`px-4 py-3 text-right align-top font-mono text-[10px] font-semibold ${
-                      row.quantity >= 0
+                      row.quantity >=
+                      0
                         ? 'text-[#3d6b4f]'
                         : 'text-[#a63a2e]'
                     }`}
                   >
-                    {formatQuantity(row.quantity)}
+                    {formatQuantity(
+                      row.quantity,
+                    )}
                   </td>
 
                   <td className="px-4 py-3 align-top font-mono text-[9px] text-[#5b5346]">
-                    {row.reference || '—'}
+                    {row.reference ||
+                      '—'}
                   </td>
 
                   <td className="px-4 py-3 align-top">
                     <div className="font-mono text-[9px] text-[#2b2620]">
-                      {row.performedBy.name ||
-                        row.performedBy.email}
+                      {row.performedBy
+                        .name ||
+                        row.performedBy
+                          .email}
                     </div>
 
                     {row.transferId && (
@@ -324,6 +515,95 @@ export default function StockMovementReport({
           </tbody>
         </table>
       </div>
+
+      {!loading &&
+        totalRecords > 0 && (
+          <div className="flex flex-col gap-3 border-t border-[#2b2620]/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="font-mono text-[8px] tracking-wider text-[#5b5346]">
+              SHOWING {startRecord}–{endRecord} OF{' '}
+              {totalRecords}{' '}
+              {totalRecords === 1
+                ? 'TRANSACTION'
+                : 'TRANSACTIONS'}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPageChange(
+                      page - 1,
+                    )
+                  }
+                  disabled={
+                    !hasPreviousPage
+                  }
+                  className="border border-[#2b2620]/20 px-3 py-1.5 font-mono text-[7px] tracking-widest hover:bg-[#ddd0b8] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  PREVIOUS
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {visiblePages.map(
+                    (
+                      pageNumber,
+                      index,
+                    ) =>
+                      pageNumber ===
+                      'ellipsis' ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="px-1 font-mono text-[8px] text-[#5b5346]"
+                        >
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={pageNumber}
+                          type="button"
+                          onClick={() =>
+                            onPageChange(
+                              pageNumber,
+                            )
+                          }
+                          disabled={
+                            pageNumber ===
+                            page
+                          }
+                          className={`min-w-[28px] border px-2 py-1.5 font-mono text-[7px] ${
+                            pageNumber ===
+                            page
+                              ? 'border-[#2e4057] bg-[#2e4057] text-[#f5f0e3]'
+                              : 'border-[#2b2620]/20 hover:bg-[#ddd0b8]'
+                          }`}
+                        >
+                          {
+                            pageNumber
+                          }
+                        </button>
+                      ),
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPageChange(
+                      page + 1,
+                    )
+                  }
+                  disabled={
+                    !hasNextPage
+                  }
+                  className="border border-[#2b2620]/20 px-3 py-1.5 font-mono text-[7px] tracking-widest hover:bg-[#ddd0b8] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  NEXT
+                </button>
+              </div>
+            )}
+          </div>
+        )}
     </section>
   );
 }
