@@ -101,7 +101,7 @@ export default function InventoryPage() {
   const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
   useState(false);
 
-  const pageSize = 10;;
+  const pageSize = 10;
 
   // --------------------------------------------------
   // LOAD INVENTORY
@@ -533,6 +533,8 @@ export default function InventoryPage() {
 
         body = {
           quantity: amount,
+          idempotencyKey:
+            crypto.randomUUID(),
           ...(reference
             ? { reference }
             : {}),

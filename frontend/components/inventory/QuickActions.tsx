@@ -28,7 +28,6 @@ type OrganizationLocation = {
   id: string;
   name: string;
   locationType: string;
-  status: string;
 };
 
 type QuickActionsProps = {
@@ -74,15 +73,6 @@ export default function QuickActions({
 
   const itemLocations =
     selectedItem?.locationBreakdown ?? [];
-
-    const activeLocations = useMemo(
-    () =>
-      locations.filter(
-        (location) =>
-          location.status === 'active',
-      ),
-    [locations],
-  );
 
   useEffect(() => {
     if (!selectedItem) {
@@ -276,6 +266,8 @@ export default function QuickActions({
 
         body = {
           quantity: amount,
+          idempotencyKey:
+            crypto.randomUUID(),
           ...(notes
             ? { notes }
             : {}),
@@ -503,28 +495,13 @@ export default function QuickActions({
                   </option>
 
                   {itemLocations.map(
-                  (location) => {
-                    const organizationLocation =
-                      locations.find(
-                        (entry) =>
-                          entry.id ===
-                          location.locationId,
-                      );
-
-                    const isInactive =
-                      organizationLocation?.status !==
-                      'active';
-
-                    return (
+                    (location) => (
                       <option
                         key={
                           location.locationId
                         }
                         value={
                           location.locationId
-                        }
-                        disabled={
-                          isInactive
                         }
                       >
                         {
@@ -537,13 +514,9 @@ export default function QuickActions({
                         {
                           selectedItem?.unitOfMeasure
                         }
-                        {isInactive
-                          ? ' · INACTIVE'
-                          : ''}
                       </option>
-                    );
-                  },
-                )}
+                    ),
+                  )}
                 </select>
               </div>
 
@@ -571,27 +544,19 @@ export default function QuickActions({
                     </option>
 
                     {locations
-                        .filter(
-                          (location) =>
-                            location.id !== locationId,
-                        )
-                        .map((location) => (
-                          <option
-                            key={location.id}
-                            value={location.id}
-                            disabled={
-                              location.status !==
-                              'active'
-                            }
-                          >
-                            {location.name}
-                            {location.status !==
-                              'active'
-                              ? ' · INACTIVE'
-                              : ''}
-                          </option>
-                        ))}
-                        
+                      .filter(
+                        (location) =>
+                          location.id !==
+                          locationId,
+                      )
+                      .map((location) => (
+                        <option
+                          key={location.id}
+                          value={location.id}
+                        >
+                          {location.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               )}

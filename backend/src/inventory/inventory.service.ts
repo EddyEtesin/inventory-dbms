@@ -106,6 +106,27 @@ export class InventoryService {
     );
   }
 
+  private async ensureSetupInProgress(orgId: string) {
+    const organization = await this.prisma.organization.findUnique({
+      where: {
+        id: orgId,
+      },
+      select: {
+        setupStatus: true,
+      },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found.');
+    }
+
+    if (organization.setupStatus !== 'IN_PROGRESS') {
+      throw new ConflictException(
+        'Opening stock can only be recorded while organization setup is in progress.',
+      );
+    }
+  }
+
   async getOrCreateBalance(
     orgId: string,
     itemId: string,
@@ -326,7 +347,7 @@ export class InventoryService {
     });
   }
 
-    async createOpeningBalance(
+      async createOpeningBalance(
     orgId: string,
     itemId: string,
     locationId: string,
@@ -349,6 +370,8 @@ export class InventoryService {
         'An idempotency key is required for opening balances.',
       );
     }
+
+    await this.ensureSetupInProgress(orgId);
 
     const item = await this.prisma.item.findFirst({
       where: {
@@ -438,36 +461,62 @@ export class InventoryService {
           };
         }
 
-        const existingBalance =
-          await tx.itemLocation.findUnique({
+        const previousOpeningBalance =
+          await tx.stockTransaction.findFirst({
             where: {
-              orgId_itemId_locationId: {
-                orgId,
-                itemId,
-                locationId,
+              orgId,
+              itemId,
+              locationId,
+              txnType: 'opening_balance',
+            },
+            select: {
+              id: true,
+            },
+          });
+
+        if (previousOpeningBalance) {
+          throw new ConflictException(
+            'Opening balance has already been recorded for this item at this location.',
+          );
+        }
+
+        await tx.itemLocation.upsert({
+          where: {
+            orgId_itemId_locationId: {
+              orgId,
+              itemId,
+              locationId,
+            },
+          },
+          update: {},
+          create: {
+            orgId,
+            itemId,
+            locationId,
+            quantity: 0,
+          },
+        });
+
+        const claimedBalance =
+          await tx.itemLocation.updateMany({
+            where: {
+              orgId,
+              itemId,
+              locationId,
+              quantity: 0,
+            },
+            data: {
+              quantity: {
+                increment: quantity,
               },
             },
           });
 
-        if (
-          existingBalance &&
-          existingBalance.quantity !== 0
-        ) {
+        if (claimedBalance.count !== 1) {
           throw new ConflictException(
             'Opening balance can only be created when the current inventory balance is zero.',
           );
         }
-
-        const balance = existingBalance
-          ? existingBalance
-          : await tx.itemLocation.create({
-              data: {
-                orgId,
-                itemId,
-                locationId,
-                quantity: 0,
-              },
-            });
 
         const generatedReference =
           await this.generateTransactionReference(
@@ -493,13 +542,12 @@ export class InventoryService {
           });
 
         const updatedBalance =
-          await tx.itemLocation.update({
+          await tx.itemLocation.findUnique({
             where: {
-              id: balance.id,
-            },
-            data: {
-              quantity: {
-                increment: quantity,
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
               },
             },
           });
@@ -913,12 +961,13 @@ export class InventoryService {
     }
   }
 
-  async adjustStock(
+    async adjustStock(
     orgId: string,
     itemId: string,
     locationId: string,
     quantity: number,
     performedBy: string,
+    idempotencyKey: string,
     reference?: string,
     notes?: string,
   ) {
@@ -927,6 +976,12 @@ export class InventoryService {
     if (!Number.isInteger(quantity) || quantity === 0) {
       throw new ConflictException(
         'Adjustment quantity must be a non-zero whole number.',
+      );
+    }
+
+    if (!idempotencyKey || !idempotencyKey.trim()) {
+      throw new ConflictException(
+        'An idempotency key is required for stock adjustments.',
       );
     }
 
@@ -979,70 +1034,198 @@ export class InventoryService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await tx.itemLocation.upsert({
-        where: {
-          orgId_itemId_locationId: {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existingTransaction =
+          await tx.stockTransaction.findFirst({
+            where: {
+              orgId,
+              idempotencyKey,
+            },
+          });
+
+        if (existingTransaction) {
+          const sameRequest =
+            existingTransaction.itemId === itemId &&
+            existingTransaction.locationId === locationId &&
+            existingTransaction.quantity === quantity &&
+            existingTransaction.txnType === 'adjustment' &&
+            existingTransaction.notes === notes;
+
+          if (!sameRequest) {
+            throw new ConflictException(
+              'This idempotency key has already been used for a different stock adjustment.',
+            );
+          }
+
+          return {
+            balance: await tx.itemLocation.findUnique({
+              where: {
+                orgId_itemId_locationId: {
+                  orgId,
+                  itemId: existingTransaction.itemId,
+                  locationId: existingTransaction.locationId,
+                },
+              },
+            }),
+            transaction: existingTransaction,
+            replayed: true,
+          };
+        }
+
+        if (quantity > 0) {
+          await tx.itemLocation.upsert({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
+              },
+            },
+            update: {
+              quantity: {
+                increment: quantity,
+              },
+            },
+            create: {
+              orgId,
+              itemId,
+              locationId,
+              quantity,
+            },
+          });
+        } else {
+          const balance =
+            await tx.itemLocation.findUnique({
+              where: {
+                orgId_itemId_locationId: {
+                  orgId,
+                  itemId,
+                  locationId,
+                },
+              },
+              select: {
+                quantity: true,
+              },
+            });
+
+          if (!balance) {
+            throw new ConflictException(
+              'Inventory balance not found for this item at this location.',
+            );
+          }
+
+          const reduced =
+            await tx.itemLocation.updateMany({
+              where: {
+                orgId,
+                itemId,
+                locationId,
+                quantity: {
+                  gte: -quantity,
+                },
+              },
+              data: {
+                quantity: {
+                  decrement: -quantity,
+                },
+              },
+            });
+
+          if (reduced.count !== 1) {
+            throw new ConflictException(
+              `Stock adjustment cannot reduce inventory below zero. Available quantity is ${balance.quantity}.`,
+            );
+          }
+        }
+
+        const generatedReference =
+          await this.generateTransactionReference(
+            tx,
             orgId,
-            itemId,
-            locationId,
-          },
-        },
-        update: {},
-        create: {
-          orgId,
-          itemId,
-          locationId,
-          quantity: 0,
-        },
+            TransactionType.adjustment,
+            item.sku,
+          );
+
+        const transaction =
+          await tx.stockTransaction.create({
+            data: {
+              orgId,
+              itemId,
+              locationId,
+              txnType: 'adjustment',
+              quantity,
+              performedBy,
+              idempotencyKey,
+              reference: generatedReference,
+              notes,
+            },
+          });
+
+        const updatedBalance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
+              },
+            },
+          });
+
+        return {
+          balance: updatedBalance,
+          transaction,
+          replayed: false,
+        };
       });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
 
-      const newQuantity = balance.quantity + quantity;
+      const existingTransaction =
+        await this.prisma.stockTransaction.findFirst({
+          where: {
+            orgId,
+            idempotencyKey,
+          },
+        });
 
-      if (newQuantity < 0) {
+      if (!existingTransaction) {
+        throw error;
+      }
+
+      const sameRequest =
+        existingTransaction.itemId === itemId &&
+        existingTransaction.locationId === locationId &&
+        existingTransaction.quantity === quantity &&
+        existingTransaction.txnType === 'adjustment' &&
+        existingTransaction.notes === notes;
+
+      if (!sameRequest) {
         throw new ConflictException(
-          'Stock adjustment cannot reduce inventory below zero.',
+          'This idempotency key has already been used for a different stock adjustment.',
         );
       }
 
-      const generatedReference =
-        await this.generateTransactionReference(
-          tx,
-          orgId,
-          TransactionType.adjustment,
-          item.sku,
-        );
-
-      const transaction = await tx.stockTransaction.create({
-        data: {
-          orgId,
-          itemId,
-          locationId,
-          txnType: 'adjustment',
-          quantity,
-          performedBy,
-          reference: generatedReference,
-          notes,
-        },
-      });
-
-      const updatedBalance = await tx.itemLocation.update({
-        where: {
-          id: balance.id,
-        },
-        data: {
-          quantity: newQuantity,
-        },
-      });
-
       return {
-        balance: updatedBalance,
-        transaction,
+        balance: await this.prisma.itemLocation.findUnique({
+          where: {
+            orgId_itemId_locationId: {
+              orgId,
+              itemId: existingTransaction.itemId,
+              locationId: existingTransaction.locationId,
+            },
+          },
+        }),
+        transaction: existingTransaction,
+        replayed: true,
       };
-    });
+    }
   }
 
-     async issueStock(
+       async issueStock(
     orgId: string,
     itemId: string,
     locationId: string,
@@ -1154,15 +1337,16 @@ export class InventoryService {
           };
         }
 
-        const balance = await tx.itemLocation.findUnique({
-          where: {
-            orgId_itemId_locationId: {
-              orgId,
-              itemId,
-              locationId,
+        const balance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
+              },
             },
-          },
-        });
+          });
 
         if (!balance) {
           throw new NotFoundException(
@@ -1170,7 +1354,25 @@ export class InventoryService {
           );
         }
 
-        if (balance.quantity < quantity) {
+        const reduced =
+          await tx.itemLocation.updateMany({
+            where: {
+              id: balance.id,
+              orgId,
+              itemId,
+              locationId,
+              quantity: {
+                gte: quantity,
+              },
+            },
+            data: {
+              quantity: {
+                decrement: quantity,
+              },
+            },
+          });
+
+        if (reduced.count !== 1) {
           throw new ConflictException(
             `Insufficient stock. Available quantity is ${balance.quantity}.`,
           );
@@ -1184,30 +1386,31 @@ export class InventoryService {
             item.sku,
           );
 
-        const transaction = await tx.stockTransaction.create({
-          data: {
-            orgId,
-            itemId,
-            locationId,
-            txnType: 'issue',
-            quantity: -quantity,
-            performedBy,
-            idempotencyKey,
-            reference: generatedReference,
-            notes,
-          },
-        });
-
-        const updatedBalance = await tx.itemLocation.update({
-          where: {
-            id: balance.id,
-          },
-          data: {
-            quantity: {
-              decrement: quantity,
+        const transaction =
+          await tx.stockTransaction.create({
+            data: {
+              orgId,
+              itemId,
+              locationId,
+              txnType: 'issue',
+              quantity: -quantity,
+              performedBy,
+              idempotencyKey,
+              reference: generatedReference,
+              notes,
             },
-          },
-        });
+          });
+
+        const updatedBalance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId,
+              },
+            },
+          });
 
         return {
           balance: updatedBalance,
@@ -1261,7 +1464,7 @@ export class InventoryService {
     }
   }
 
-     async transferStock(
+       async transferStock(
     orgId: string,
     itemId: string,
     fromLocationId: string,
@@ -1428,15 +1631,16 @@ export class InventoryService {
           };
         }
 
-        const fromBalance = await tx.itemLocation.findUnique({
-          where: {
-            orgId_itemId_locationId: {
-              orgId,
-              itemId,
-              locationId: fromLocationId,
+        const fromBalance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId: fromLocationId,
+              },
             },
-          },
-        });
+          });
 
         if (!fromBalance) {
           throw new NotFoundException(
@@ -1444,7 +1648,25 @@ export class InventoryService {
           );
         }
 
-        if (fromBalance.quantity < quantity) {
+        const reduced =
+          await tx.itemLocation.updateMany({
+            where: {
+              id: fromBalance.id,
+              orgId,
+              itemId,
+              locationId: fromLocationId,
+              quantity: {
+                gte: quantity,
+              },
+            },
+            data: {
+              quantity: {
+                decrement: quantity,
+              },
+            },
+          });
+
+        if (reduced.count !== 1) {
           throw new ConflictException(
             `Insufficient stock at the source location. Available quantity is ${fromBalance.quantity}.`,
           );
@@ -1458,19 +1680,20 @@ export class InventoryService {
             item.sku,
           );
 
-        const transfer = await tx.stockTransfer.create({
-          data: {
-            orgId,
-            itemId,
-            fromLocationId,
-            toLocationId,
-            quantity,
-            status: 'completed',
-            reference: generatedReference,
-            performedBy,
-            completedAt: new Date(),
-          },
-        });
+        const transfer =
+          await tx.stockTransfer.create({
+            data: {
+              orgId,
+              itemId,
+              fromLocationId,
+              toLocationId,
+              quantity,
+              status: 'completed',
+              reference: generatedReference,
+              performedBy,
+              completedAt: new Date(),
+            },
+          });
 
         const fromTransaction =
           await tx.stockTransaction.create({
@@ -1503,18 +1726,6 @@ export class InventoryService {
             },
           });
 
-        const updatedFromBalance =
-          await tx.itemLocation.update({
-            where: {
-              id: fromBalance.id,
-            },
-            data: {
-              quantity: {
-                decrement: quantity,
-              },
-            },
-          });
-
         const updatedToBalance =
           await tx.itemLocation.upsert({
             where: {
@@ -1534,6 +1745,17 @@ export class InventoryService {
               itemId,
               locationId: toLocationId,
               quantity,
+            },
+          });
+
+        const updatedFromBalance =
+          await tx.itemLocation.findUnique({
+            where: {
+              orgId_itemId_locationId: {
+                orgId,
+                itemId,
+                locationId: fromLocationId,
+              },
             },
           });
 
