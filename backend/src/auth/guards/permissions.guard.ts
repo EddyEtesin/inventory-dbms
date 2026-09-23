@@ -16,29 +16,40 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Injectable()
-export class PermissionsGuard implements CanActivate {
+export class PermissionsGuard
+  implements CanActivate
+{
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  async canActivate(
+    context: ExecutionContext,
+  ): Promise<boolean> {
     const requiredPermissions =
-      this.reflector.getAllAndOverride<string[]>(
-        PERMISSIONS_KEY,
-        [context.getHandler(), context.getClass()],
-      );
+      this.reflector.getAllAndOverride<
+        string[]
+      >(PERMISSIONS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    if (
+      !requiredPermissions ||
+      requiredPermissions.length === 0
+    ) {
       return true;
     }
 
     const request =
-      context.switchToHttp().getRequest<AuthenticatedRequest>();
+      context
+        .switchToHttp()
+        .getRequest<AuthenticatedRequest>();
 
     const user = request.user;
 
-    if (!user?.sub || !user.orgId) {
+    if (!user?.sub || !user?.orgId) {
       throw new UnauthorizedException();
     }
 
@@ -51,6 +62,11 @@ export class PermissionsGuard implements CanActivate {
           },
         },
         include: {
+          organization: {
+            select: {
+              status: true,
+            },
+          },
           role: {
             include: {
               permissions: {
@@ -63,20 +79,74 @@ export class PermissionsGuard implements CanActivate {
         },
       });
 
-    if (!membership || membership.status !== 'active') {
+    if (
+      !membership ||
+      membership.status !== 'active'
+    ) {
       throw new ForbiddenException(
         'You do not have an active membership in this organization.',
       );
     }
 
-    const userPermissions =
-      membership.role.permissions.map(
-        (rolePermission) => rolePermission.permission.code,
+    const isOwner =
+      membership.role.name === 'Owner';
+
+    const organizationIsSuspended =
+      membership.organization.status ===
+      'suspended';
+
+    const handlerName =
+      context.getHandler().name;
+
+    const isOrganizationStatusRoute =
+      handlerName ===
+      'updateOrganizationStatus';
+
+    const isOrganizationReadRoute =
+      [
+        'getOrganization',
+        'getRoles',
+        'getPermissions',
+        'getUsers',
+        'getAuditLogs',
+      ].includes(handlerName);
+
+    const requestedStatus =
+      request.body?.status;
+
+    const isAllowedOwnerSuspendedRequest =
+      isOwner &&
+      organizationIsSuspended &&
+      (
+        isOrganizationReadRoute ||
+        (
+          isOrganizationStatusRoute &&
+          requestedStatus === 'active'
+        )
       );
 
-    const hasAllPermissions = requiredPermissions.every(
-      (permission) => userPermissions.includes(permission),
-    );
+    if (
+      organizationIsSuspended &&
+      !isAllowedOwnerSuspendedRequest
+    ) {
+      throw new ForbiddenException(
+        'This organization is currently suspended.',
+      );
+    }
+
+    const userPermissions =
+      membership.role.permissions.map(
+        (rolePermission) =>
+          rolePermission.permission.code,
+      );
+
+    const hasAllPermissions =
+      requiredPermissions.every(
+        (permission) =>
+          userPermissions.includes(
+            permission,
+          ),
+      );
 
     if (!hasAllPermissions) {
       throw new ForbiddenException(

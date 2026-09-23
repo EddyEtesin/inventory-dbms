@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 type CurrentUserResponse = {
   user: {

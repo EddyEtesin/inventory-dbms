@@ -106,6 +106,13 @@ export class InventoryService {
     );
   }
 
+  private isRetryableTransactionError(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2034'
+    );
+  }
+
   private async ensureSetupInProgress(orgId: string) {
     const organization = await this.prisma.organization.findUnique({
       where: {
@@ -347,7 +354,7 @@ export class InventoryService {
     });
   }
 
-      async createOpeningBalance(
+  async createOpeningBalance(
     orgId: string,
     itemId: string,
     locationId: string,
@@ -1564,210 +1571,263 @@ export class InventoryService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const existingTransaction =
-          await tx.stockTransaction.findFirst({
-            where: {
-              orgId,
-              idempotencyKey,
-            },
-          });
-
-        if (existingTransaction) {
-          const transfer = existingTransaction.transferId
-            ? await tx.stockTransfer.findUnique({
-                where: {
-                  id: existingTransaction.transferId,
-                },
-              })
-            : null;
-
-          const sameRequest =
-            existingTransaction.txnType === 'transfer' &&
-            existingTransaction.itemId === itemId &&
-            existingTransaction.quantity === -quantity &&
-            existingTransaction.notes === notes &&
-            transfer?.fromLocationId === fromLocationId &&
-            transfer?.toLocationId === toLocationId &&
-            transfer?.quantity === quantity;
-
-          if (!sameRequest) {
-            throw new ConflictException(
-              'This idempotency key has already been used for a different stock transfer.',
-            );
-          }
-
-          return {
-            transfer,
-            fromBalance: await tx.itemLocation.findUnique({
-              where: {
-                orgId_itemId_locationId: {
-                  orgId,
-                  itemId,
-                  locationId: fromLocationId,
-                },
-              },
-            }),
-            toBalance: await tx.itemLocation.findUnique({
-              where: {
-                orgId_itemId_locationId: {
-                  orgId,
-                  itemId,
-                  locationId: toLocationId,
-                },
-              },
-            }),
-            fromTransaction: existingTransaction,
-            toTransaction: transfer
-              ? await tx.stockTransaction.findFirst({
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await this.prisma.$transaction(
+            async (tx) => {
+              const existingTransaction =
+                await tx.stockTransaction.findFirst({
                   where: {
                     orgId,
-                    transferId: transfer.id,
-                    locationId: toLocationId,
+                    idempotencyKey,
                   },
-                })
-              : null,
-            replayed: true,
-          };
-        }
+                });
 
-        const fromBalance =
-          await tx.itemLocation.findUnique({
-            where: {
-              orgId_itemId_locationId: {
-                orgId,
-                itemId,
-                locationId: fromLocationId,
-              },
+              if (existingTransaction) {
+                const transfer = existingTransaction.transferId
+                  ? await tx.stockTransfer.findUnique({
+                      where: {
+                        id: existingTransaction.transferId,
+                      },
+                    })
+                  : null;
+
+                const sameRequest =
+                  existingTransaction.txnType === 'transfer' &&
+                  existingTransaction.itemId === itemId &&
+                  existingTransaction.quantity === -quantity &&
+                  existingTransaction.notes === notes &&
+                  transfer?.fromLocationId === fromLocationId &&
+                  transfer?.toLocationId === toLocationId &&
+                  transfer?.quantity === quantity;
+
+                if (!sameRequest) {
+                  throw new ConflictException(
+                    'This idempotency key has already been used for a different stock transfer.',
+                  );
+                }
+
+                return {
+                  transfer,
+                  fromBalance: await tx.itemLocation.findUnique({
+                    where: {
+                      orgId_itemId_locationId: {
+                        orgId,
+                        itemId,
+                        locationId: fromLocationId,
+                      },
+                    },
+                  }),
+                  toBalance: await tx.itemLocation.findUnique({
+                    where: {
+                      orgId_itemId_locationId: {
+                        orgId,
+                        itemId,
+                        locationId: toLocationId,
+                      },
+                    },
+                  }),
+                  fromTransaction: existingTransaction,
+                  toTransaction: transfer
+                    ? await tx.stockTransaction.findFirst({
+                        where: {
+                          orgId,
+                          transferId: transfer.id,
+                          locationId: toLocationId,
+                        },
+                      })
+                    : null,
+                  replayed: true,
+                };
+              }
+
+              const fromBalance =
+                await tx.itemLocation.findUnique({
+                  where: {
+                    orgId_itemId_locationId: {
+                      orgId,
+                      itemId,
+                      locationId: fromLocationId,
+                    },
+                  },
+                });
+
+              if (!fromBalance) {
+                throw new NotFoundException(
+                  'Source inventory balance not found for this item at this location.',
+                );
+              }
+
+              const reduceSource = async () => {
+                const reduced =
+                  await tx.itemLocation.updateMany({
+                    where: {
+                      id: fromBalance.id,
+                      orgId,
+                      itemId,
+                      locationId: fromLocationId,
+                      quantity: {
+                        gte: quantity,
+                      },
+                    },
+                    data: {
+                      quantity: {
+                        decrement: quantity,
+                      },
+                    },
+                  });
+
+                if (reduced.count !== 1) {
+                  throw new ConflictException(
+                    `Insufficient stock at the source location. Available quantity is ${fromBalance.quantity}.`,
+                  );
+                }
+
+              };
+
+              const increaseDestination = async () => {
+                await tx.itemLocation.upsert({
+                    where: {
+                      orgId_itemId_locationId: {
+                        orgId,
+                        itemId,
+                        locationId: toLocationId,
+                      },
+                    },
+                    update: {
+                      quantity: {
+                        increment: quantity,
+                      },
+                    },
+                    create: {
+                      orgId,
+                      itemId,
+                      locationId: toLocationId,
+                      quantity,
+                    },
+                  });
+              };
+
+              // Always update the two inventory balances in the same
+              // location-id order. This prevents A -> B and B -> A
+              // transfers from acquiring row locks in opposite orders.
+              if (
+                fromLocationId.localeCompare(toLocationId) < 0
+              ) {
+                await reduceSource();
+                await increaseDestination();
+              } else {
+                await increaseDestination();
+                await reduceSource();
+              }
+
+              const updatedFromBalance =
+                await tx.itemLocation.findUnique({
+                  where: {
+                    orgId_itemId_locationId: {
+                      orgId,
+                      itemId,
+                      locationId: fromLocationId,
+                    },
+                  },
+                });
+
+              const updatedToBalance =
+                await tx.itemLocation.findUnique({
+                  where: {
+                    orgId_itemId_locationId: {
+                      orgId,
+                      itemId,
+                      locationId: toLocationId,
+                    },
+                  },
+                });
+
+              const generatedReference =
+                await this.generateTransactionReference(
+                  tx,
+                  orgId,
+                  TransactionType.transfer,
+                  item.sku,
+                );
+
+              const transfer =
+                await tx.stockTransfer.create({
+                  data: {
+                    orgId,
+                    itemId,
+                    fromLocationId,
+                    toLocationId,
+                    quantity,
+                    status: 'completed',
+                    reference: generatedReference,
+                    performedBy,
+                    completedAt: new Date(),
+                  },
+                });
+
+              const fromTransaction =
+                await tx.stockTransaction.create({
+                  data: {
+                    orgId,
+                    itemId,
+                    locationId: fromLocationId,
+                    txnType: 'transfer',
+                    quantity: -quantity,
+                    reference: generatedReference,
+                    transferId: transfer.id,
+                    performedBy,
+                    idempotencyKey,
+                    notes,
+                  },
+                });
+
+              const toTransaction =
+                await tx.stockTransaction.create({
+                  data: {
+                    orgId,
+                    itemId,
+                    locationId: toLocationId,
+                    txnType: 'transfer',
+                    quantity,
+                    reference: generatedReference,
+                    transferId: transfer.id,
+                    performedBy,
+                    notes,
+                  },
+                });
+
+              return {
+                transfer,
+                fromBalance: updatedFromBalance,
+                toBalance: updatedToBalance,
+                fromTransaction,
+                toTransaction,
+                replayed: false,
+              };
             },
-          });
+            {
+              isolationLevel:
+                Prisma.TransactionIsolationLevel.Serializable,
+            },
+          );
+        } catch (error) {
+          if (
+            !this.isRetryableTransactionError(error) ||
+            attempt === 2
+          ) {
+            throw error;
+          }
 
-        if (!fromBalance) {
-          throw new NotFoundException(
-            'Source inventory balance not found for this item at this location.',
+          await new Promise((resolve) =>
+            setTimeout(resolve, 25 * (attempt + 1)),
           );
         }
+      }
 
-        const reduced =
-          await tx.itemLocation.updateMany({
-            where: {
-              id: fromBalance.id,
-              orgId,
-              itemId,
-              locationId: fromLocationId,
-              quantity: {
-                gte: quantity,
-              },
-            },
-            data: {
-              quantity: {
-                decrement: quantity,
-              },
-            },
-          });
-
-        if (reduced.count !== 1) {
-          throw new ConflictException(
-            `Insufficient stock at the source location. Available quantity is ${fromBalance.quantity}.`,
-          );
-        }
-
-        const generatedReference =
-          await this.generateTransactionReference(
-            tx,
-            orgId,
-            TransactionType.transfer,
-            item.sku,
-          );
-
-        const transfer =
-          await tx.stockTransfer.create({
-            data: {
-              orgId,
-              itemId,
-              fromLocationId,
-              toLocationId,
-              quantity,
-              status: 'completed',
-              reference: generatedReference,
-              performedBy,
-              completedAt: new Date(),
-            },
-          });
-
-        const fromTransaction =
-          await tx.stockTransaction.create({
-            data: {
-              orgId,
-              itemId,
-              locationId: fromLocationId,
-              txnType: 'transfer',
-              quantity: -quantity,
-              reference: generatedReference,
-              transferId: transfer.id,
-              performedBy,
-              idempotencyKey,
-              notes,
-            },
-          });
-
-        const toTransaction =
-          await tx.stockTransaction.create({
-            data: {
-              orgId,
-              itemId,
-              locationId: toLocationId,
-              txnType: 'transfer',
-              quantity,
-              reference: generatedReference,
-              transferId: transfer.id,
-              performedBy,
-              notes,
-            },
-          });
-
-        const updatedToBalance =
-          await tx.itemLocation.upsert({
-            where: {
-              orgId_itemId_locationId: {
-                orgId,
-                itemId,
-                locationId: toLocationId,
-              },
-            },
-            update: {
-              quantity: {
-                increment: quantity,
-              },
-            },
-            create: {
-              orgId,
-              itemId,
-              locationId: toLocationId,
-              quantity,
-            },
-          });
-
-        const updatedFromBalance =
-          await tx.itemLocation.findUnique({
-            where: {
-              orgId_itemId_locationId: {
-                orgId,
-                itemId,
-                locationId: fromLocationId,
-              },
-            },
-          });
-
-        return {
-          transfer,
-          fromBalance: updatedFromBalance,
-          toBalance: updatedToBalance,
-          fromTransaction,
-          toTransaction,
-          replayed: false,
-        };
-      });
+      throw new ConflictException(
+        'Stock transfer could not be completed. Please try again.',
+      );
     } catch (error) {
       if (!this.isUniqueConstraintError(error)) {
         throw error;
@@ -1944,216 +2004,212 @@ export class InventoryService {
     };
   }
 
-    async getInventorySummary(
-    orgId: string,
-    itemId: string,
-  ) {
-    const item = await this.prisma.item.findFirst({
+  async getInventorySummary(
+  orgId: string,
+  itemId: string,
+) {
+  const item = await this.prisma.item.findFirst({
+    where: {
+      orgId,
+      id: itemId,
+    },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      unitOfMeasure: true,
+      reorderLevel: true,
+      status: true,
+      unitPrice: true,
+    },
+  });
+
+  if (!item) {
+    throw new NotFoundException(
+      'Item not found in this organization.',
+    );
+  }
+
+  const balances = await this.prisma.itemLocation.findMany({
+    where: {
+      orgId,
+      itemId,
+    },
+    include: {
+      location: {
+        select: {
+          id: true,
+          name: true,
+          locationType: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: {
+      location: {
+        name: 'asc',
+      },
+    },
+  });
+
+  const totalQuantity = balances.reduce(
+    (total, balance) => total + balance.quantity,
+    0,
+  );
+
+  let stockStatus = 'IN_STOCK';
+
+  if (totalQuantity === 0) {
+    stockStatus = 'OUT_OF_STOCK';
+  } else if (totalQuantity <= item.reorderLevel) {
+    stockStatus = 'LOW_STOCK';
+  }
+
+  return {
+    item: {
+      id: item.id,
+      sku: item.sku,
+      name: item.name,
+      unitOfMeasure: item.unitOfMeasure,
+      unitPrice: item.unitPrice,
+      reorderLevel: item.reorderLevel,
+      status: item.status,
+    },
+    totalQuantity,
+    stockStatus,
+    locations: balances.map((balance) => ({
+      location: balance.location,
+      quantity: balance.quantity,
+    })),
+  };
+}
+   async getOrganizationInventorySummary(orgId: string) {
+  const [items, balances] = await this.prisma.$transaction([
+    this.prisma.item.findMany({
       where: {
         orgId,
-        id: itemId,
+        status: 'active',
       },
       select: {
         id: true,
         sku: true,
         name: true,
         unitOfMeasure: true,
-        reorderLevel: true,
-        status: true,
         unitPrice: true,
+        reorderLevel: true,
       },
-    });
+    }),
 
-    if (!item) {
-      throw new NotFoundException(
-        'Item not found in this organization.',
-      );
-    }
-
-    const balances = await this.prisma.itemLocation.findMany({
+    this.prisma.itemLocation.findMany({
       where: {
         orgId,
-        itemId,
       },
-      include: {
+      select: {
+        itemId: true,
+        locationId: true,
+        quantity: true,
         location: {
           select: {
             id: true,
             name: true,
-            locationType: true,
             status: true,
           },
         },
       },
-      orderBy: {
-        location: {
-          name: 'asc',
-        },
-      },
-    });
+    }),
+  ]);
 
-    const totalQuantity = balances.reduce(
-      (total, balance) => total + balance.quantity,
-      0,
+  const quantityByItem = new Map<string, number>();
+
+  for (const balance of balances) {
+    quantityByItem.set(
+      balance.itemId,
+      (quantityByItem.get(balance.itemId) ?? 0) +
+        balance.quantity,
     );
+  }
 
-    let stockStatus = 'IN_STOCK';
+  let totalUnitsInStock = 0;
+  let totalInventoryValue = 0;
+  let lowStockItems = 0;
+  let outOfStockItems = 0;
+
+  const itemSummaries = items.map((item) => {
+    const totalQuantity =
+      quantityByItem.get(item.id) ?? 0;
+
+    const inventoryValue =
+      totalQuantity * Number(item.unitPrice);
+
+    totalUnitsInStock += totalQuantity;
+    totalInventoryValue += inventoryValue;
 
     if (totalQuantity === 0) {
-      stockStatus = 'OUT_OF_STOCK';
+      outOfStockItems++;
     } else if (totalQuantity <= item.reorderLevel) {
-      stockStatus = 'LOW_STOCK';
+      lowStockItems++;
     }
 
     return {
-      item: {
-        id: item.id,
-        sku: item.sku,
-        name: item.name,
-        unitOfMeasure: item.unitOfMeasure,
-        unitPrice: item.unitPrice,
-        reorderLevel: item.reorderLevel,
-        status: item.status,
-      },
+      id: item.id,
+      sku: item.sku,
+      name: item.name,
+      unitOfMeasure: item.unitOfMeasure,
+      unitPrice: item.unitPrice,
+      reorderLevel: item.reorderLevel,
       totalQuantity,
-      stockStatus,
-      locations: balances.map((balance) => ({
-        location: balance.location,
-        quantity: balance.quantity,
-        reorderLevel:
-          balance.reorderLevel ?? item.reorderLevel,
-      })),
+      inventoryValue,
+      stockStatus:
+        totalQuantity === 0
+          ? 'OUT_OF_STOCK'
+          : totalQuantity <= item.reorderLevel
+            ? 'LOW_STOCK'
+            : 'IN_STOCK',
     };
-  }
+  });
 
-    async getOrganizationInventorySummary(orgId: string) {
-    const [items, balances] = await this.prisma.$transaction([
-      this.prisma.item.findMany({
-        where: {
-          orgId,
-          status: 'active',
-        },
-        select: {
-          id: true,
-          sku: true,
-          name: true,
-          unitOfMeasure: true,
-          unitPrice: true,
-          reorderLevel: true,
-        },
-      }),
+  const locationSummaries = balances.reduce(
+    (result, balance) => {
+      const existing = result.get(balance.locationId);
 
-      this.prisma.itemLocation.findMany({
-        where: {
-          orgId,
-        },
-        select: {
-          itemId: true,
-          locationId: true,
-          quantity: true,
-          reorderLevel: true,
-          location: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-            },
-          },
-        },
-      }),
-    ]);
-
-    const quantityByItem = new Map<string, number>();
-
-    for (const balance of balances) {
-      quantityByItem.set(
-        balance.itemId,
-        (quantityByItem.get(balance.itemId) ?? 0) +
-          balance.quantity,
-      );
-    }
-
-    let totalUnitsInStock = 0;
-    let totalInventoryValue = 0;
-    let lowStockItems = 0;
-    let outOfStockItems = 0;
-
-    const itemSummaries = items.map((item) => {
-      const totalQuantity =
-        quantityByItem.get(item.id) ?? 0;
-
-      const inventoryValue =
-        totalQuantity * Number(item.unitPrice);
-
-      totalUnitsInStock += totalQuantity;
-      totalInventoryValue += inventoryValue;
-
-      if (totalQuantity === 0) {
-        outOfStockItems++;
-      } else if (totalQuantity <= item.reorderLevel) {
-        lowStockItems++;
+      if (existing) {
+        existing.totalQuantity += balance.quantity;
+      } else {
+        result.set(balance.locationId, {
+          id: balance.location.id,
+          name: balance.location.name,
+          status: balance.location.status,
+          totalQuantity: balance.quantity,
+        });
       }
 
-      return {
-        id: item.id,
-        sku: item.sku,
-        name: item.name,
-        unitOfMeasure: item.unitOfMeasure,
-        unitPrice: item.unitPrice,
-        reorderLevel: item.reorderLevel,
-        totalQuantity,
-        inventoryValue,
-        stockStatus:
-          totalQuantity === 0
-            ? 'OUT_OF_STOCK'
-            : totalQuantity <= item.reorderLevel
-              ? 'LOW_STOCK'
-              : 'IN_STOCK',
-      };
-    });
+      return result;
+    },
+    new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        status: string;
+        totalQuantity: number;
+      }
+    >(),
+  );
 
-    const locationSummaries = balances.reduce(
-      (result, balance) => {
-        const existing = result.get(balance.locationId);
-
-        if (existing) {
-          existing.totalQuantity += balance.quantity;
-        } else {
-          result.set(balance.locationId, {
-            id: balance.location.id,
-            name: balance.location.name,
-            status: balance.location.status,
-            totalQuantity: balance.quantity,
-          });
-        }
-
-        return result;
-      },
-      new Map<
-        string,
-        {
-          id: string;
-          name: string;
-          status: string;
-          totalQuantity: number;
-        }
-      >(),
-    );
-
-    return {
-      totals: {
-        activeItems: items.length,
-        totalUnitsInStock,
-        lowStockItems,
-        outOfStockItems,
-        totalInventoryValue,
-      },
-      items: itemSummaries,
-      locations: Array.from(locationSummaries.values()).sort(
-        (a, b) => a.name.localeCompare(b.name),
-      ),
-    };
-  }
+  return {
+    totals: {
+      activeItems: items.length,
+      totalUnitsInStock,
+      lowStockItems,
+      outOfStockItems,
+      totalInventoryValue,
+    },
+    items: itemSummaries,
+    locations: Array.from(locationSummaries.values()).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    ),
+  };
+}
 
     async getLowStockItems(orgId: string) {
     const items = await this.prisma.item.findMany({
@@ -2567,99 +2623,320 @@ export class InventoryService {
   }
 
     async getLocationReorderAnalysis(orgId: string) {
-    const balances = await this.prisma.itemLocation.findMany({
-      where: {
-        orgId,
+  const balances = await this.prisma.itemLocation.findMany({
+    where: {
+      orgId,
+    },
+    include: {
+      item: {
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          unitOfMeasure: true,
+          unitPrice: true,
+          reorderLevel: true,
+          status: true,
+        },
       },
-      include: {
+      location: {
+        select: {
+          id: true,
+          name: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: [
+      {
         item: {
-          select: {
-            id: true,
-            sku: true,
-            name: true,
-            unitOfMeasure: true,
-            unitPrice: true,
-            reorderLevel: true,
-            status: true,
-          },
+          name: 'asc',
+        },
+      },
+      {
+        location: {
+          name: 'asc',
+        },
+      },
+    ],
+  });
+
+  const quantityByItem = new Map<string, number>();
+
+  for (const balance of balances) {
+    quantityByItem.set(
+      balance.itemId,
+      (quantityByItem.get(balance.itemId) ?? 0) +
+        balance.quantity,
+    );
+  }
+
+  return balances
+    .filter(
+      (balance) =>
+        balance.item.status === 'active',
+    )
+    .map((balance) => {
+      const organizationQuantity =
+        quantityByItem.get(balance.itemId) ?? 0;
+
+      const reorderLevel =
+        balance.item.reorderLevel;
+
+      const suggestedOrderQuantity = Math.max(
+        reorderLevel - organizationQuantity,
+        0,
+      );
+
+      const suggestedOrderValue =
+        suggestedOrderQuantity *
+        Number(balance.item.unitPrice);
+
+      let stockStatus:
+        | 'OUT_OF_STOCK'
+        | 'LOW_STOCK'
+        | 'IN_STOCK';
+
+      if (organizationQuantity === 0) {
+        stockStatus = 'OUT_OF_STOCK';
+      } else if (
+        organizationQuantity <=
+        reorderLevel
+      ) {
+        stockStatus = 'LOW_STOCK';
+      } else {
+        stockStatus = 'IN_STOCK';
+      }
+
+      return {
+        item: {
+          id: balance.item.id,
+          sku: balance.item.sku,
+          name: balance.item.name,
+          unitOfMeasure:
+            balance.item.unitOfMeasure,
+          unitPrice:
+            balance.item.unitPrice,
         },
         location: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-          },
+          id: balance.location.id,
+          name: balance.location.name,
+          status: balance.location.status,
+        },
+        currentQuantity: balance.quantity,
+        organizationQuantity,
+        reorderLevel,
+        suggestedOrderQuantity,
+        suggestedOrderValue,
+        stockStatus,
+      };
+    })
+    .filter(
+      (entry) =>
+        entry.stockStatus !== 'IN_STOCK',
+    );
+}
+
+  async getStockMovementTrend(orgId: string, days = 30) {
+  const safeDays = Math.min(
+    Math.max(Math.floor(days), 7),
+    90,
+  );
+
+  const now = new Date();
+
+  const endDate = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
+
+  const startDate = new Date(endDate);
+
+  startDate.setUTCDate(
+    startDate.getUTCDate() - (safeDays - 1),
+  );
+
+  startDate.setUTCHours(0, 0, 0, 0);
+
+  /*
+   * Movement definitions:
+   *
+   * RECEIVED     = sum of receive quantities
+   * ISSUED       = sum of absolute issue quantities
+   * ADJUSTED     = sum of absolute adjustment quantities
+   * TRANSFERRED  = sum of positive transfer quantities
+   *
+   * Transfer transactions are recorded twice in the ledger,
+   * once as a negative source movement and once as a positive
+   * destination movement. Only positive transfer entries are
+   * counted so that the transfer is not double-counted.
+   */
+
+  const allTransactions =
+    await this.prisma.stockTransaction.findMany({
+      where: {
+        orgId,
+        txnType: {
+          in: [
+            'receive',
+            'issue',
+            'adjustment',
+            'transfer',
+          ],
         },
       },
-      orderBy: [
-        {
-          item: {
-            name: 'asc',
-          },
-        },
-        {
-          location: {
-            name: 'asc',
-          },
-        },
-      ],
+      select: {
+        txnType: true,
+        quantity: true,
+      },
     });
 
-    return balances
-      .filter((balance) => balance.item.status === 'active')
-      .map((balance) => {
-        const effectiveReorderLevel =
-          balance.reorderLevel ??
-          balance.item.reorderLevel;
+  let received = 0;
+  let issued = 0;
+  let adjusted = 0;
+  let transferred = 0;
 
-        const currentQuantity = balance.quantity;
+  for (const transaction of allTransactions) {
+    switch (transaction.txnType) {
+      case 'receive':
+        received += transaction.quantity;
+        break;
 
-        const suggestedOrderQuantity = Math.max(
-          effectiveReorderLevel - currentQuantity,
-          0,
-        );
+      case 'issue':
+        issued += Math.abs(transaction.quantity);
+        break;
 
-        const suggestedOrderValue =
-          suggestedOrderQuantity *
-          Number(balance.item.unitPrice);
+      case 'adjustment':
+        adjusted += Math.abs(transaction.quantity);
+        break;
 
-        let stockStatus:
-          | 'OUT_OF_STOCK'
-          | 'LOW_STOCK'
-          | 'IN_STOCK';
-
-        if (currentQuantity === 0) {
-          stockStatus = 'OUT_OF_STOCK';
-        } else if (currentQuantity <= effectiveReorderLevel) {
-          stockStatus = 'LOW_STOCK';
-        } else {
-          stockStatus = 'IN_STOCK';
+      case 'transfer':
+        if (transaction.quantity > 0) {
+          transferred += transaction.quantity;
         }
+        break;
 
-        return {
-          item: {
-            id: balance.item.id,
-            sku: balance.item.sku,
-            name: balance.item.name,
-            unitOfMeasure: balance.item.unitOfMeasure,
-            unitPrice: balance.item.unitPrice,
-          },
-          location: {
-            id: balance.location.id,
-            name: balance.location.name,
-            status: balance.location.status,
-          },
-          currentQuantity,
-          reorderLevel: effectiveReorderLevel,
-          suggestedOrderQuantity,
-          suggestedOrderValue,
-          stockStatus,
-        };
-      })
-      .filter(
-        (entry) => entry.stockStatus !== 'IN_STOCK',
-      );
+      default:
+        break;
+    }
   }
+
+  /*
+   * Time-based chart data for the selected period.
+   */
+  const transactions =
+    await this.prisma.stockTransaction.findMany({
+      where: {
+        orgId,
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+        txnType: {
+          in: [
+            'receive',
+            'issue',
+            'adjustment',
+            'transfer',
+          ],
+        },
+      },
+      select: {
+        txnType: true,
+        quantity: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+  const buckets = new Map<
+    string,
+    {
+      date: string;
+      received: number;
+      issued: number;
+      adjusted: number;
+      transferred: number;
+    }
+  >();
+
+  for (let index = 0; index < safeDays; index += 1) {
+    const date = new Date(startDate);
+
+    date.setUTCDate(
+      startDate.getUTCDate() + index,
+    );
+
+    const key = date.toISOString().slice(0, 10);
+
+    buckets.set(key, {
+      date: key,
+      received: 0,
+      issued: 0,
+      adjusted: 0,
+      transferred: 0,
+    });
+  }
+
+  for (const transaction of transactions) {
+    const dateKey = transaction.createdAt
+      .toISOString()
+      .slice(0, 10);
+
+    const bucket = buckets.get(dateKey);
+
+    if (!bucket) {
+      continue;
+    }
+
+    switch (transaction.txnType) {
+      case 'receive':
+        bucket.received += transaction.quantity;
+        break;
+
+      case 'issue':
+        bucket.issued += Math.abs(transaction.quantity);
+        break;
+
+      case 'adjustment':
+        bucket.adjusted += Math.abs(
+          transaction.quantity,
+        );
+        break;
+
+      case 'transfer':
+        if (transaction.quantity > 0) {
+          bucket.transferred += transaction.quantity;
+        }
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  return {
+    days: safeDays,
+    fromDate: startDate,
+    toDate: endDate,
+    totals: {
+      received,
+      issued,
+      adjusted,
+      transferred,
+    },
+    data: Array.from(buckets.values()),
+  };
+}
 
   async getRecentInventoryActivity(orgId: string, limit = 10) {
   const transactions = await this.prisma.stockTransaction.findMany({
@@ -2752,6 +3029,7 @@ async getInventoryRegister(orgId: string) {
       name: true,
       unitOfMeasure: true,
       unitPrice: true,
+      sellingPrice: true,
       reorderLevel: true,
 
       category: {
@@ -2765,7 +3043,6 @@ async getInventoryRegister(orgId: string) {
         select: {
           id: true,
           quantity: true,
-          reorderLevel: true,
 
           location: {
             select: {
@@ -2774,6 +3051,7 @@ async getInventoryRegister(orgId: string) {
             },
           },
         },
+
         orderBy: {
           location: {
             name: 'asc',
@@ -2786,18 +3064,19 @@ async getInventoryRegister(orgId: string) {
   return {
     data: items.map((item) => {
       const totalQuantity = item.locations.reduce(
-        (sum, location) => sum + location.quantity,
+        (sum, location) =>
+          sum + location.quantity,
         0,
       );
 
-      const effectiveReorderLevel = item.reorderLevel;
-
-      const locationCount = item.locations.length;
+      const locationCount =
+        item.locations.length;
 
       const status =
         totalQuantity === 0
           ? 'OUT_OF_STOCK'
-          : totalQuantity <= effectiveReorderLevel
+          : totalQuantity <=
+              item.reorderLevel
             ? 'LOW_STOCK'
             : 'IN_STOCK';
 
@@ -2805,6 +3084,7 @@ async getInventoryRegister(orgId: string) {
         id: item.id,
         sku: item.sku,
         name: item.name,
+
         category: item.category
           ? {
               id: item.category.id,
@@ -2812,27 +3092,43 @@ async getInventoryRegister(orgId: string) {
             }
           : null,
 
-        unitOfMeasure: item.unitOfMeasure,
-        unitPrice: Number(item.unitPrice),
+        unitOfMeasure:
+          item.unitOfMeasure,
+
+        unitPrice:
+          Number(item.unitPrice),
+
+        sellingPrice:
+          item.sellingPrice === null
+            ? null
+            : Number(item.sellingPrice),
 
         quantity: totalQuantity,
-        locations: locationCount,
-        reorderLevel: effectiveReorderLevel,
+
+        locations:
+          locationCount,
+
+        reorderLevel:
+          item.reorderLevel,
+
         status,
 
-        locationBreakdown: item.locations.map((entry) => ({
-          id: entry.id,
-          locationId: entry.location.id,
-          locationName: entry.location.name,
-          quantity: entry.quantity,
-          reorderLevel:
-            entry.reorderLevel ?? effectiveReorderLevel,
-        })),
+        locationBreakdown:
+          item.locations.map(
+            (entry) => ({
+              id: entry.id,
+              locationId:
+                entry.location.id,
+              locationName:
+                entry.location.name,
+              quantity:
+                entry.quantity,
+            }),
+          ),
       };
     }),
   };
 }
-
   async removeItemLocation(
     orgId: string,
     itemId: string,

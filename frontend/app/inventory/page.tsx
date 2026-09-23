@@ -1,19 +1,31 @@
 'use client';
 
 import {
+  Activity,
+  ArrowUpDown,
+  MapPinned,
+  PackageOpen,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
+
+import {
   FormEvent,
   useEffect,
   useMemo,
   useState,
 } from 'react';
 
-import InventoryHeader from '../../components/inventory/InventoryHeader';
 import InventoryRegister from '../../components/inventory/InventoryRegister';
+
 import InventorySidebar from '../../components/inventory/InventorySidebar';
-import QuickActions from '../../components/inventory/QuickActions';
+
 import ItemDrawer from '../../components/inventory/ItemDrawer';
 
 import { apiFetch } from '../../lib/api';
+
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 import type {
   InventoryStatus,
@@ -34,20 +46,39 @@ type OrganizationLocation = {
 export default function InventoryPage() {
   const [collapsed, setCollapsed] = useState(false);
 
-  const [items, setItems] = useState<RegisterItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<
+    RegisterItem[]
+  >([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
   const [error, setError] = useState('');
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] =
+    useState('');
+
   const [statusFilter, setStatusFilter] =
     useState<InventoryStatus>('ALL');
+
+  const [sortBy, setSortBy] =
+    useState<
+      | 'name'
+      | 'quantity_desc'
+      | 'quantity_asc'
+      | 'locations_desc'
+    >('name');
 
   // --------------------------------------------------
   // ORGANIZATION LOCATIONS
   // --------------------------------------------------
 
-  const [organizationLocations, setOrganizationLocations] =
-    useState<OrganizationLocation[]>([]);
+  const [
+    organizationLocations,
+    setOrganizationLocations,
+  ] = useState<
+    OrganizationLocation[]
+  >([]);
 
   // --------------------------------------------------
   // ITEM DRAWER
@@ -63,21 +94,32 @@ export default function InventoryPage() {
   const [operation, setOperation] =
     useState<Operation>(null);
 
-  const [operationLocationId, setOperationLocationId] =
+  const [
+    operationLocationId,
+    setOperationLocationId,
+  ] = useState('');
+
+  const [
+    targetLocationId,
+    setTargetLocationId,
+  ] = useState('');
+
+  const [quantity, setQuantity] =
     useState('');
 
-  const [targetLocationId, setTargetLocationId] =
+  const [reference, setReference] =
     useState('');
 
-  const [quantity, setQuantity] = useState('');
-  const [reference, setReference] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] =
+    useState('');
 
   const [submitting, setSubmitting] =
     useState(false);
 
-  const [operationError, setOperationError] =
-    useState('');
+  const [
+    operationError,
+    setOperationError,
+  ] = useState('');
 
   // --------------------------------------------------
   // TRANSACTION HISTORY
@@ -86,37 +128,58 @@ export default function InventoryPage() {
   const [transactions, setTransactions] =
     useState<Transaction[]>([]);
 
-  const [transactionLoading, setTransactionLoading] =
-    useState(false);
+  const [
+    transactionLoading,
+    setTransactionLoading,
+  ] = useState(false);
 
-  const [transactionPage, setTransactionPage] =
-  useState(1);
+  const [
+    transactionPage,
+    setTransactionPage,
+  ] = useState(1);
 
-  const [transactionTotalPages, setTransactionTotalPages] =
-  useState(1);
+  const [
+    transactionTotalPages,
+    setTransactionTotalPages,
+  ] = useState(1);
 
-  const [hasNextTransactionPage, setHasNextTransactionPage] =
-  useState(false);
-  
-  const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
-  useState(false);
+  const [
+    hasNextTransactionPage,
+    setHasNextTransactionPage,
+  ] = useState(false);
 
-  const pageSize = 10;
+  const [
+    hasPreviousTransactionPage,
+    setHasPreviousTransactionPage,
+  ] = useState(false);
+
+  const pageSize = 5;
+
+  useAutoDismissMessage(
+    error,
+    setError,
+  );
 
   // --------------------------------------------------
   // LOAD INVENTORY
   // --------------------------------------------------
 
-  async function loadInventory(): Promise<RegisterItem[]> {
+  async function loadInventory(): Promise<
+    RegisterItem[]
+  > {
     try {
       setLoading(true);
       setError('');
 
       const token =
-        window.localStorage.getItem('accessToken');
+        window.localStorage.getItem(
+          'accessToken',
+        );
 
       if (!token) {
-        throw new Error('Please sign in first.');
+        throw new Error(
+          'Please sign in first.',
+        );
       }
 
       const response =
@@ -149,10 +212,14 @@ export default function InventoryPage() {
   async function loadLocations() {
     try {
       const token =
-        window.localStorage.getItem('accessToken');
+        window.localStorage.getItem(
+          'accessToken',
+        );
 
       if (!token) {
-        throw new Error('Please sign in first.');
+        throw new Error(
+          'Please sign in first.',
+        );
       }
 
       const response =
@@ -162,9 +229,10 @@ export default function InventoryPage() {
           }
         >('/locations', token);
 
-      const data = Array.isArray(response)
-        ? response
-        : response.data ?? [];
+      const data =
+        Array.isArray(response)
+          ? response
+          : response.data ?? [];
 
       setOrganizationLocations(data);
     } catch (err) {
@@ -208,32 +276,91 @@ export default function InventoryPage() {
   }, []);
 
   // --------------------------------------------------
-  // FILTERING
+  // FILTERING + SORTING
   // --------------------------------------------------
 
   const filteredItems = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query =
+      search.trim().toLowerCase();
 
-    return items.filter((item) => {
-      const matchesSearch =
-        !query ||
-        item.name
-          .toLowerCase()
-          .includes(query) ||
-        item.sku
-          .toLowerCase()
-          .includes(query) ||
-        item.category?.name
-          .toLowerCase()
-          .includes(query);
+    const filtered = items.filter(
+      (item) => {
+        const matchesSearch =
+          !query ||
+          item.name
+            .toLowerCase()
+            .includes(query) ||
+          item.sku
+            .toLowerCase()
+            .includes(query) ||
+          item.category?.name
+            ?.toLowerCase()
+            .includes(query);
 
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        item.status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'ALL' ||
+          item.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [items, search, statusFilter]);
+        return (
+          matchesSearch &&
+          matchesStatus
+        );
+      },
+    );
+
+    return [...filtered].sort(
+      (a, b) => {
+        switch (sortBy) {
+          case 'quantity_desc':
+            return (
+              b.quantity - a.quantity
+            );
+
+          case 'quantity_asc':
+            return (
+              a.quantity - b.quantity
+            );
+
+          case 'locations_desc':
+            return (
+              b.locations - a.locations
+            );
+
+          case 'name':
+          default:
+            return a.name.localeCompare(
+              b.name,
+            );
+        }
+      },
+    );
+  }, [
+    items,
+    search,
+    statusFilter,
+    sortBy,
+  ]);
+
+  const locationCount =
+    organizationLocations.length;
+
+  const activeLocationCount =
+    organizationLocations.filter(
+      (location) =>
+        location.status === 'active',
+    ).length;
+
+  const lowStockCount =
+    items.filter(
+      (item) =>
+        item.status === 'LOW_STOCK',
+    ).length;
+
+  const outOfStockCount =
+    items.filter(
+      (item) =>
+        item.status === 'OUT_OF_STOCK',
+    ).length;
 
   // --------------------------------------------------
   // TRANSACTION HISTORY
@@ -248,10 +375,14 @@ export default function InventoryPage() {
       setTransactionLoading(true);
 
       const token =
-        window.localStorage.getItem('accessToken');
+        window.localStorage.getItem(
+          'accessToken',
+        );
 
       if (!token) {
-        throw new Error('Please sign in first.');
+        throw new Error(
+          'Please sign in first.',
+        );
       }
 
       const response =
@@ -261,24 +392,24 @@ export default function InventoryPage() {
         );
 
       setTransactions(
-          response.data,
-        );
+        response.data,
+      );
 
-        setTransactionPage(
-          response.pagination.page,
-        );
+      setTransactionPage(
+        response.pagination.page,
+      );
 
-        setTransactionTotalPages(
-          response.pagination.totalPages,
-        );
+      setTransactionTotalPages(
+        response.pagination.totalPages,
+      );
 
-        setHasNextTransactionPage(
-          response.pagination.hasNextPage,
-        );
+      setHasNextTransactionPage(
+        response.pagination.hasNextPage,
+      );
 
-        setHasPreviousTransactionPage(
-          response.pagination.hasPreviousPage,
-        );
+      setHasPreviousTransactionPage(
+        response.pagination.hasPreviousPage,
+      );
     } catch (err) {
       console.error(
         'Unable to load transactions:',
@@ -295,7 +426,9 @@ export default function InventoryPage() {
   // OPEN ITEM
   // --------------------------------------------------
 
-  async function openItem(item: RegisterItem) {
+  async function openItem(
+    item: RegisterItem,
+  ) {
     setSelectedItem(item);
 
     setOperation(null);
@@ -365,7 +498,9 @@ export default function InventoryPage() {
       return;
     }
 
-    setOperationLocationId(locationId);
+    setOperationLocationId(
+      locationId,
+    );
 
     await loadTransactions(
       selectedItem,
@@ -381,11 +516,17 @@ export default function InventoryPage() {
   function startOperation(
     nextOperation: Operation,
   ) {
-    if (!nextOperation || !selectedItem) {
+    if (
+      !nextOperation ||
+      !selectedItem
+    ) {
       return;
     }
 
-    setOperation(nextOperation);
+    setOperation(
+      nextOperation,
+    );
+
     setOperationError('');
 
     setQuantity('');
@@ -393,9 +534,13 @@ export default function InventoryPage() {
     setNotes('');
     setTargetLocationId('');
 
-    if (selectedItem.locationBreakdown.length > 0) {
+    if (
+      selectedItem.locationBreakdown
+        .length > 0
+    ) {
       setOperationLocationId(
-        selectedItem.locationBreakdown[0]
+        selectedItem
+          .locationBreakdown[0]
           .locationId,
       );
     }
@@ -428,17 +573,23 @@ export default function InventoryPage() {
   ) {
     event.preventDefault();
 
-    if (!selectedItem || !operation) {
+    if (
+      !selectedItem ||
+      !operation
+    ) {
       return;
     }
 
-    const amount = Number(quantity);
+    const amount =
+      Number(quantity);
 
     const validAmount =
       Number.isInteger(amount) &&
-      (operation === 'adjust'
-        ? amount !== 0
-        : amount > 0);
+      (
+        operation === 'adjust'
+          ? amount !== 0
+          : amount > 0
+      );
 
     if (!validAmount) {
       setOperationError(
@@ -486,7 +637,9 @@ export default function InventoryPage() {
       setOperationError('');
 
       const token =
-        window.localStorage.getItem('accessToken');
+        window.localStorage.getItem(
+          'accessToken',
+        );
 
       if (!token) {
         throw new Error(
@@ -495,7 +648,11 @@ export default function InventoryPage() {
       }
 
       let endpoint = '';
-      let body: Record<string, unknown>;
+
+      let body: Record<
+        string,
+        unknown
+      >;
 
       if (operation === 'receive') {
         endpoint =
@@ -512,7 +669,9 @@ export default function InventoryPage() {
             ? { notes }
             : {}),
         };
-      } else if (operation === 'issue') {
+      } else if (
+        operation === 'issue'
+      ) {
         endpoint =
           `/inventory/items/${selectedItem.id}/locations/${operationLocationId}/issue`;
 
@@ -527,7 +686,9 @@ export default function InventoryPage() {
             ? { notes }
             : {}),
         };
-      } else if (operation === 'adjust') {
+      } else if (
+        operation === 'adjust'
+      ) {
         endpoint =
           `/inventory/items/${selectedItem.id}/locations/${operationLocationId}/adjust`;
 
@@ -568,7 +729,9 @@ export default function InventoryPage() {
         token,
         {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: JSON.stringify(
+            body,
+          ),
         },
       );
 
@@ -581,11 +744,14 @@ export default function InventoryPage() {
       const refreshedItem =
         refreshedItems.find(
           (item) =>
-            item.id === selectedItem.id,
+            item.id ===
+            selectedItem.id,
         );
 
       if (refreshedItem) {
-        setSelectedItem(refreshedItem);
+        setSelectedItem(
+          refreshedItem,
+        );
       }
 
       // Refresh the selected location ledger.
@@ -614,7 +780,9 @@ export default function InventoryPage() {
     } catch (err) {
       setOperationError(
         err instanceof Error
-          ? extractApiError(err.message)
+          ? extractApiError(
+              err.message,
+            )
           : 'Stock operation failed.',
       );
     } finally {
@@ -627,42 +795,43 @@ export default function InventoryPage() {
   // --------------------------------------------------
 
   async function handlePreviousPage() {
-  if (
-    !selectedItem ||
-    !operationLocationId ||
-    !hasPreviousTransactionPage
-  ) {
-    return;
+    if (
+      !selectedItem ||
+      !operationLocationId ||
+      !hasPreviousTransactionPage
+    ) {
+      return;
+    }
+
+    await loadTransactions(
+      selectedItem,
+      operationLocationId,
+      transactionPage - 1,
+    );
   }
 
-  await loadTransactions(
-    selectedItem,
-    operationLocationId,
-    transactionPage - 1,
-  );
-}
+  async function handleNextPage() {
+    if (
+      !selectedItem ||
+      !operationLocationId ||
+      !hasNextTransactionPage
+    ) {
+      return;
+    }
 
-async function handleNextPage() {
-  if (
-    !selectedItem ||
-    !operationLocationId ||
-    !hasNextTransactionPage
-  ) {
-    return;
+    await loadTransactions(
+      selectedItem,
+      operationLocationId,
+      transactionPage + 1,
+    );
   }
 
-  await loadTransactions(
-    selectedItem,
-    operationLocationId,
-    transactionPage + 1,
-  );
-}
   // --------------------------------------------------
   // RENDER
   // --------------------------------------------------
 
   return (
-    <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
+    <main className="min-h-screen bg-[#d5c8ae] text-[#2b2620]">
       <InventorySidebar
         collapsed={collapsed}
         onToggle={() =>
@@ -680,69 +849,377 @@ async function handleNextPage() {
         }`}
       >
         <div className="p-3 md:p-5">
-          <div className="mx-auto max-w-[1400px]">
+          <div className="mx-auto max-w-[1450px]">
 
-            {/* HEADER */}
-            <InventoryHeader
-              search={search}
-              statusFilter={statusFilter}
-              onSearchChange={setSearch}
-              onStatusChange={setStatusFilter}
-            />
+            {/* INVENTORY WORKSPACE HEADER */}
+            <header className="overflow-hidden border border-[#b7a87e] bg-[#f5f0e3]">
+              <div className="flex flex-col gap-3 bg-[#2e4057] px-5 py-4 text-[#f5f0e3] md:flex-row md:items-center md:justify-between md:px-7">
+                <div>
+                  <div className="font-mono text-[7px] tracking-[0.22em] opacity-75">
+                    STOCK CONTROL / REGISTER
+                  </div>
 
-            {/* ERROR */}
-            {error && (
-              <div className="mt-4 border border-[#a63a2e] bg-[#f5f0e3] px-4 py-3">
-                <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                  INVENTORY ERROR
+                  <div className="mt-1 font-mono text-[24px] leading-none tracking-[0.04em]">
+                    INVENTORY
+                  </div>
                 </div>
 
-                <div className="mt-1 font-mono text-[9px] text-[#a63a2e]">
-                  {error}
+                <div className="flex items-center gap-3">
+                  <div className="hidden border border-[#d5c8ae]/50 px-3 py-1.5 font-mono text-[7px] tracking-widest md:block">
+                    {loading
+                      ? 'SYNCING'
+                      : 'LIVE DATABASE'}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 font-mono text-[7px] tracking-widest">
+                    <Activity
+                      size={12}
+                      strokeWidth={1.7}
+                    />
+                    REGISTER ACTIVE
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 px-5 py-5 md:grid-cols-[minmax(0,1fr)_220px] md:px-7">
+                <div>
+                  <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
+                    STOCK CONTROL
+                  </div>
+
+                  <h1 className="mt-1 font-mono text-[25px] leading-tight">
+                    Stock Records
+                  </h1>
+
+                  <p className="mt-2 max-w-[760px] font-mono text-[8px] leading-5 text-[#5b5346]">
+                    Search, sort and inspect stock
+                    balances across your organization.
+                    Select any record to open its
+                    location ledger and perform stock
+                    operations.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 border border-[#b7a87e] bg-[#eae2ce]">
+                  <MetricCell
+                    label="RECORDS"
+                    value={String(
+                      filteredItems.length,
+                    )}
+                  />
+
+                  <MetricCell
+                    label="LOCATIONS"
+                    value={String(
+                      activeLocationCount,
+                    )}
+                  />
+
+                  <MetricCell
+                    label="LOW STOCK"
+                    value={String(
+                      lowStockCount,
+                    )}
+                    danger={
+                      lowStockCount > 0
+                    }
+                  />
+
+                  <MetricCell
+                    label="OUT"
+                    value={String(
+                      outOfStockCount,
+                    )}
+                    danger={
+                      outOfStockCount > 0
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* SEARCH + FILTER CONTROL STRIP */}
+              <div className="border-t border-[#d0c4aa] bg-[#ddd0b8] px-5 py-4 md:px-7">
+                <div className="mb-2 flex items-center gap-2 font-mono text-[7px] tracking-widest text-[#5b5346]">
+                  <SlidersHorizontal
+                    size={12}
+                    strokeWidth={1.7}
+                  />
+                  REGISTER CONTROLS
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px_auto] lg:items-end">
+                  <label className="block">
+                    <span className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                      SEARCH
+                    </span>
+
+                    <div className="relative mt-1">
+                      <Search
+                        size={14}
+                        strokeWidth={1.7}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5b5346]"
+                      />
+
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={(event) =>
+                          setSearch(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="ITEM, SKU OR CATEGORY"
+                        className="w-full border border-[#b7a87e] bg-[#f5f0e3] py-2.5 pl-9 pr-3 font-mono text-[9px] outline-none focus:border-[#2e4057]"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block">
+                    <span className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                      SORT BY
+                    </span>
+
+                    <div className="relative mt-1">
+                      <ArrowUpDown
+                        size={13}
+                        strokeWidth={1.7}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b5346]"
+                      />
+
+                      <select
+                        value={sortBy}
+                        onChange={(event) =>
+                          setSortBy(
+                            event.target
+                              .value as
+                              | 'name'
+                              | 'quantity_desc'
+                              | 'quantity_asc'
+                              | 'locations_desc',
+                          )
+                        }
+                        className="w-full appearance-none border border-[#b7a87e] bg-[#f5f0e3] py-2.5 pl-9 pr-3 font-mono text-[8px] outline-none focus:border-[#2e4057]"
+                      >
+                        <option value="name">
+                          ITEM NAME A-Z
+                        </option>
+
+                        <option value="quantity_desc">
+                          QUANTITY HIGH-LOW
+                        </option>
+
+                        <option value="quantity_asc">
+                          QUANTITY LOW-HIGH
+                        </option>
+
+                        <option value="locations_desc">
+                          MOST LOCATIONS
+                        </option>
+                      </select>
+                    </div>
+                  </label>
+
+                  <div>
+                    <div className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                      STATUS
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <InventoryFilterButton
+                        label={`ALL ${items.length}`}
+                        active={
+                          statusFilter ===
+                          'ALL'
+                        }
+                        onClick={() =>
+                          setStatusFilter(
+                            'ALL',
+                          )
+                        }
+                      />
+
+                      <InventoryFilterButton
+                        label={`IN STOCK ${
+                          items.filter(
+                            (item) =>
+                              item.status ===
+                              'IN_STOCK',
+                          ).length
+                        }`}
+                        active={
+                          statusFilter ===
+                          'IN_STOCK'
+                        }
+                        onClick={() =>
+                          setStatusFilter(
+                            'IN_STOCK',
+                          )
+                        }
+                      />
+
+                      <InventoryFilterButton
+                        label={`LOW ${
+                          lowStockCount
+                        }`}
+                        active={
+                          statusFilter ===
+                          'LOW_STOCK'
+                        }
+                        onClick={() =>
+                          setStatusFilter(
+                            'LOW_STOCK',
+                          )
+                        }
+                      />
+
+                      <InventoryFilterButton
+                        label={`OUT ${
+                          outOfStockCount
+                        }`}
+                        active={
+                          statusFilter ===
+                          'OUT_OF_STOCK'
+                        }
+                        onClick={() =>
+                          setStatusFilter(
+                            'OUT_OF_STOCK',
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            {/* ERROR */}
+
+            {error && (
+              <div className="mt-4 flex flex-col gap-3 border border-[#a63a2e] bg-[#f5f0e3] px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
+                    INVENTORY ERROR
+                  </div>
+
+                  <div className="mt-1 font-mono text-[9px] text-[#a63a2e]">
+                    {error}
+                  </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={loadInventory}
-                  className="mt-3 border border-[#a63a2e] px-3 py-1.5 font-mono text-[8px] tracking-widest text-[#a63a2e] hover:bg-[#a63a2e] hover:text-[#f5f0e3]"
+                  className="flex items-center justify-center gap-2 border border-[#a63a2e] px-3 py-2 font-mono text-[7px] tracking-widest text-[#a63a2e] hover:bg-[#a63a2e] hover:text-[#f5f0e3]"
                 >
-                  RETRY
+                  <RefreshCw
+                    size={11}
+                  />
+                  RETRY REGISTER
                 </button>
               </div>
             )}
 
-            {/* MAIN INVENTORY AREA */}
-            <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+            {/* REGISTER COMMAND BAR */}
 
-              {/* REGISTER */}
-              <InventoryRegister
-                items={filteredItems}
-                loading={loading}
-                onOpenItem={openItem}
-              />
+            <div className="mt-5 flex flex-col gap-3 border-y border-[#2e4057] bg-[#2e4057] px-4 py-3 text-[#f5f0e3] md:flex-row md:items-center md:justify-between md:px-5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[7px] tracking-widest">
+                <span>
+                  REGISTER
+                </span>
 
-              {/* QUICK ACTIONS */}
-              <div className="xl:sticky xl:top-5 xl:self-start">
-                <QuickActions
-                  items={items}
-                  locations={organizationLocations}
-                  onCompleted={async () => {
-                    await loadInventory();
-                  }}
+                <span className="opacity-40">
+                  /
+                </span>
+
+                <span>
+                  {filteredItems.length}{' '}
+                  VISIBLE RECORDS
+                </span>
+
+                <span className="opacity-40">
+                  /
+                </span>
+
+                <span>
+                  {locationCount}{' '}
+                  TOTAL LOCATIONS
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 font-mono text-[7px] tracking-widest opacity-80">
+                <PackageOpen
+                  size={12}
+                  strokeWidth={1.6}
                 />
+                SELECT A RECORD TO INSPECT
               </div>
             </div>
 
+            {/* INVENTORY REGISTER */}
+
+            <section className="mt-4 overflow-hidden border border-[#b7a87e] bg-[#f5f0e3]">
+              <div className="flex flex-col gap-3 border-b border-[#d0c4aa] px-5 py-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="font-mono text-[7px] tracking-[0.18em] text-[#a63a2e]">
+                    STOCK REGISTER
+                  </div>
+
+                  <h2 className="mt-1 font-mono text-[19px]">
+                    Current Stock
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 font-mono text-[7px] text-[#5b5346]">
+                    <MapPinned
+                      size={12}
+                      strokeWidth={1.6}
+                    />
+                    {activeLocationCount}{' '}
+                    ACTIVE LOCATIONS
+                  </div>
+
+                  <div className="h-4 w-px bg-[#b7a87e]" />
+
+                  <div className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                    {loading
+                      ? 'UPDATING'
+                      : 'READY'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-1 pb-1 md:px-2 md:pb-2">
+                <InventoryRegister
+                  items={filteredItems}
+                  loading={loading}
+                  onOpenItem={openItem}
+                />
+              </div>
+            </section>
+
+            {!loading &&
+              items.length > 0 &&
+              filteredItems.length === 0 && (
+                <div className="mt-3 border border-dashed border-[#b7a87e] bg-[#eae2ce] px-4 py-3 font-mono text-[8px] text-[#5b5346]">
+                  No inventory records match the
+                  current search and status filters.
+                  Adjust the register controls above
+                  to broaden the view.
+                </div>
+              )}
+
             {/* FOOTER */}
+
             <footer className="mt-5 border-t border-dashed border-[#b7a87e] pt-2 font-mono text-[7px] text-[#5b5346]">
               <div className="flex flex-col justify-between gap-1 md:flex-row">
                 <span>
-                  INVENTORY LEDGER · STOCK RECORDS
+                  STOCK CONTROL · INVENTORY LEDGER
                 </span>
 
                 <span>
                   {loading
-                    ? 'LOADING DATABASE'
+                    ? 'SYNCING DATABASE'
                     : 'LIVE DATABASE'}
                 </span>
               </div>
@@ -752,6 +1229,7 @@ async function handleNextPage() {
       </div>
 
       {/* ITEM DRAWER */}
+
       <ItemDrawer
         selectedItem={selectedItem}
         organizationLocations={
@@ -778,7 +1256,6 @@ async function handleNextPage() {
         transactionPage={
           transactionPage
         }
-
         transactionTotalPages={
           transactionTotalPages
         }
@@ -839,18 +1316,75 @@ async function handleNextPage() {
   );
 }
 
+function MetricCell({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="border-b border-r border-[#b7a87e] px-3 py-3">
+      <div className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+        {label}
+      </div>
+
+      <div
+        className={`mt-1 font-mono text-[16px] ${
+          danger
+            ? 'text-[#a63a2e]'
+            : 'text-[#2e4057]'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function InventoryFilterButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`border px-3 py-2 font-mono text-[7px] tracking-widest transition-colors ${
+        active
+          ? 'border-[#2e4057] bg-[#2e4057] text-[#f5f0e3]'
+          : 'border-[#b7a87e] bg-[#f5f0e3] text-[#2b2620] hover:border-[#2e4057]'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 // --------------------------------------------------
 // API ERROR HELPER
 // --------------------------------------------------
 
 function extractApiError(message: string) {
   try {
-    const parsed = JSON.parse(message);
+    const parsed =
+      JSON.parse(message);
 
     if (
-      Array.isArray(parsed.message)
+      Array.isArray(
+        parsed.message,
+      )
     ) {
-      return parsed.message.join(', ');
+      return parsed.message.join(
+        ', ',
+      );
     }
 
     if (

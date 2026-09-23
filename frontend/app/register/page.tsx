@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -30,6 +31,8 @@ export default function RegisterPage() {
     useState(false);
   const [error, setError] =
     useState('');
+
+  useAutoDismissMessage(error, setError);
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,

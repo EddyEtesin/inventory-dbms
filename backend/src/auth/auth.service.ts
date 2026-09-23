@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -170,10 +171,6 @@ export class AuthService {
            * --------------------------------------------------
            * 1. Make sure all system permissions exist.
            * --------------------------------------------------
-           *
-           * This is important because a fresh database reset
-           * removes permission records. Registration must not
-           * depend on a previous seed having been executed.
            */
           await tx.permission.createMany({
             data: SYSTEM_PERMISSIONS.map(
@@ -254,19 +251,17 @@ export class AuthService {
           if (
             permissions.length > 0
           ) {
-            await tx.rolePermission.createMany(
-              {
-                data: permissions.map(
-                  (permission) => ({
-                    roleId:
-                      ownerRole.id,
-                    permissionId:
-                      permission.id,
-                  }),
-                ),
-                skipDuplicates: true,
-              },
-            );
+            await tx.rolePermission.createMany({
+              data: permissions.map(
+                (permission) => ({
+                  roleId:
+                    ownerRole.id,
+                  permissionId:
+                    permission.id,
+                }),
+              ),
+              skipDuplicates: true,
+            });
           }
 
           /*
@@ -275,18 +270,16 @@ export class AuthService {
            * --------------------------------------------------
            */
           const membership =
-            await tx.organizationMember.create(
-              {
-                data: {
-                  orgId:
-                    organization.id,
-                  userId: user.id,
-                  roleId:
-                    ownerRole.id,
-                  status: 'active',
-                },
+            await tx.organizationMember.create({
+              data: {
+                orgId:
+                  organization.id,
+                userId: user.id,
+                roleId:
+                  ownerRole.id,
+                status: 'active',
               },
-            );
+            });
 
           return {
             user,
@@ -310,125 +303,153 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const email = dto.email
-      .trim()
-      .toLowerCase();
+  const email = dto.email
+    .trim()
+    .toLowerCase();
 
-    const user =
-      await this.prisma.user.findUnique({
-        where: {
-          email,
-        },
-        include: {
-          memberships: {
-            where: {
-              status: 'active',
-            },
-            include: {
-              organization: true,
-              role: true,
+  const user =
+    await this.prisma.user.findUnique({
+      where: {
+        email,
+      },
+      include: {
+        memberships: {
+          where: {
+            status: 'active',
+            organization: {
+              status: {
+                in: ['active', 'suspended'],
+              },
             },
           },
+          include: {
+            organization: true,
+            role: true,
+          },
         },
-      });
+      },
+    });
 
-    if (
-      !user ||
-      !user.passwordHash
-    ) {
-      throw new UnauthorizedException(
-        'Invalid email or password.',
-      );
-    }
-
-    const passwordMatches =
-      await bcrypt.compare(
-        dto.password,
-        user.passwordHash,
-      );
-
-    if (!passwordMatches) {
-      throw new UnauthorizedException(
-        'Invalid email or password.',
-      );
-    }
-
-    if (
-      user.memberships.length === 0
-    ) {
-      throw new UnauthorizedException(
-        'Your account is not attached to an active organization.',
-      );
-    }
-
-    const membership =
-      user.memberships[0];
-
-    if (!membership) {
-      throw new UnauthorizedException(
-        'Your account is not attached to an active organization.',
-      );
-    }
-
-    return this.createAuthResponse(
-      user.id,
-      user.email,
-      membership.orgId,
-      membership.roleId,
+  if (!user || !user.passwordHash) {
+    throw new UnauthorizedException(
+      'Invalid email or password.',
     );
   }
 
-  async getCurrentUser(
-    payload: JwtPayload,
+  const passwordMatches =
+    await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
+
+  if (!passwordMatches) {
+    throw new UnauthorizedException(
+      'Invalid email or password.',
+    );
+  }
+
+  if (user.memberships.length === 0) {
+    throw new UnauthorizedException(
+      'Your account is not attached to an active organization.',
+    );
+  }
+
+  const membership =
+    user.memberships.find(
+      (member) =>
+        member.organization.status ===
+          'active' ||
+        member.role.name === 'Owner',
+    );
+
+  if (!membership) {
+    throw new UnauthorizedException(
+      'Your organization is currently suspended.',
+    );
+  }
+
+  if (
+    membership.organization.status ===
+      'suspended' &&
+    membership.role.name !== 'Owner'
   ) {
-    const membership =
-      await this.prisma.organizationMember.findFirst(
-        {
-          where: {
-            orgId: payload.orgId,
-            userId: payload.sub,
-            status: 'active',
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                industryType: true,
-                status: true,
-                setupStatus: true,
-              },
-            },
-            role: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
+    throw new UnauthorizedException(
+      'Your organization is currently suspended.',
+    );
+  }
+
+  return this.createAuthResponse(
+    user.id,
+    user.email,
+    membership.orgId,
+    membership.roleId,
+  );
+}
+
+  async getCurrentUser(
+  payload: JwtPayload,
+) {
+  const membership =
+    await this.prisma.organizationMember.findFirst({
+      where: {
+        orgId: payload.orgId,
+        userId: payload.sub,
+        status: 'active',
+        organization: {
+          status: {
+            in: ['active', 'suspended'],
           },
         },
-      );
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            industryType: true,
+            status: true,
+            setupStatus: true,
+          },
+        },
+        role: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
 
-    if (!membership) {
-      throw new UnauthorizedException(
-        'Your account is not attached to an active organization.',
-      );
-    }
-
-    return {
-      user: membership.user,
-      organization:
-        membership.organization,
-      role: membership.role,
-    };
+  if (!membership) {
+    throw new UnauthorizedException(
+      'Your account is not attached to an active organization.',
+    );
   }
+
+  if (
+    membership.organization.status ===
+      'suspended' &&
+    membership.role.name !== 'Owner'
+  ) {
+    throw new ForbiddenException(
+      'Your organization is currently suspended.',
+    );
+  }
+
+  return {
+    user: membership.user,
+    organization:
+      membership.organization,
+    role: membership.role,
+  };
+}
 
   async getSetupProgress(payload: JwtPayload) {
     await this.getCurrentUser(payload);
@@ -588,6 +609,7 @@ export class AuthService {
 
     return this.getSetupProgress(payload);
   }
+
   private async createAuthResponse(
     userId: string,
     email: string,

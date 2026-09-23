@@ -21,10 +21,9 @@ import {
 } from 'react';
 
 import { useRouter } from 'next/navigation';
-
 import InventorySidebar from '../../components/inventory/InventorySidebar';
-
 import { apiFetch } from '../../lib/api';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 type Category = {
   id: string;
@@ -60,7 +59,6 @@ type CurrentUserResponse = {
 
 export default function CategoriesPage() {
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
 
   const [organization, setOrganization] =
     useState<
@@ -99,6 +97,13 @@ export default function CategoriesPage() {
 
   const [expanded, setExpanded] =
     useState<Record<string, boolean>>({});
+
+  const [collapsed, setCollapsed] = useState(false);
+
+  useAutoDismissMessage(error, setError);
+
+
+
 
   async function loadCategories() {
     try {
@@ -501,26 +506,24 @@ export default function CategoriesPage() {
       : 'ORGANIZATION';
 
   return (
-    <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
-      <InventorySidebar
-        collapsed={collapsed}
-        onToggle={() =>
-          setCollapsed(
-            (current) =>
-              !current,
-          )
-        }
-      />
+  <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
+    <InventorySidebar
+      collapsed={collapsed}
+      onToggle={() =>
+        setCollapsed((current) => !current)
+      }
+    />
 
-      <div
-        className={`min-h-screen ${
-          collapsed
-            ? 'md:pl-[68px]'
-            : 'md:pl-[205px]'
-        }`}
-      >
-        <div className="p-3 md:p-5">
-          <div className="mx-auto max-w-[1250px]">
+    <div
+      className={`min-h-screen transition-all duration-200 ${
+        collapsed
+          ? 'ml-[68px]'
+          : 'ml-[220px]'
+      }`}
+    >
+      <div className="mx-auto max-w-[1150px] px-4 py-6">
+
+      </div>
 
         {/* HEADER */}
         <header className="border border-[#b7a87e] bg-[#f5f0e3] px-5 py-4 shadow-[0_2px_0_#b7a87e,0_8px_20px_rgba(43,38,32,0.12)]">
@@ -902,8 +905,6 @@ export default function CategoriesPage() {
           </div>
         </>
       )}
-        </div>
-      </div>
     </main>
   );
 }

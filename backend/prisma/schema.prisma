@@ -182,6 +182,7 @@ model Item {
   supplierId    String?            @map("supplier_id") @db.Uuid
   unitOfMeasure String             @map("unit_of_measure")
   unitPrice     Decimal            @map("unit_price") @db.Decimal(12, 2)
+  sellingPrice  Decimal?           @map("selling_price") @db.Decimal(12, 2)
   reorderLevel  Int                @default(0) @map("reorder_level")
   status        ItemStatus         @default(active)
   createdAt     DateTime           @default(now()) @map("created_at")
@@ -205,14 +206,13 @@ model Item {
 }
 
 model ItemLocation {
-  id           String       @id @default(uuid()) @db.Uuid
-  orgId        String       @map("org_id") @db.Uuid
-  itemId       String       @map("item_id") @db.Uuid
-  locationId   String       @map("location_id") @db.Uuid
-  quantity     Int          @default(0)
-  reorderLevel Int?         @map("reorder_level")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id         String       @id @default(uuid()) @db.Uuid
+  orgId      String       @map("org_id") @db.Uuid
+  itemId     String       @map("item_id") @db.Uuid
+  locationId String       @map("location_id") @db.Uuid
+  quantity   Int          @default(0)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   item         Item         @relation(fields: [orgId, itemId], references: [orgId, id], onDelete: Cascade)
   location     Location     @relation(fields: [orgId, locationId], references: [orgId, id], onDelete: Cascade)
@@ -220,7 +220,7 @@ model ItemLocation {
   @@unique([orgId, itemId, locationId])
   @@index([orgId, locationId])
   @@index([orgId, itemId])
-  @@index([orgId, quantity, reorderLevel])
+  @@index([orgId, quantity])
   @@map("item_locations")
 }
 

@@ -24,6 +24,8 @@ import InventorySidebar from '../../components/inventory/InventorySidebar';
 
 import { apiFetch } from '../../lib/api';
 
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
+
 type Supplier = {
   id: string;
   name: string;

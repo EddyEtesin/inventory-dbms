@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -13,7 +14,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { AdministrationService } from './administration.service';
+import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
@@ -45,6 +48,33 @@ export class AdministrationController {
   ) {
     return this.administrationService.updateOrganization(
       request.user.orgId,
+      request.user.sub,
+      dto,
+    );
+  }
+
+  @Patch('organization/status')
+  @RequirePermissions('organization.update')
+  updateOrganizationStatus(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: UpdateOrganizationStatusDto,
+  ) {
+    return this.administrationService.updateOrganizationStatus(
+      request.user.orgId,
+      request.user.sub,
+      dto,
+    );
+  }
+
+  @Post('users')
+  @RequirePermissions('user.invite')
+  createUser(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: CreateUserDto,
+  ) {
+    return this.administrationService.createUser(
+      request.user.orgId,
+      request.user.sub,
       dto,
     );
   }
@@ -69,6 +99,7 @@ export class AdministrationController {
     return this.administrationService.updateUserRole(
       request.user.orgId,
       memberId,
+      request.user.sub,
       dto,
     );
   }
@@ -85,6 +116,16 @@ export class AdministrationController {
       memberId,
       dto,
       request.user.sub,
+    );
+  }
+
+  @Get('audit-logs')
+  @RequirePermissions('user.view')
+  getAuditLogs(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.administrationService.getAuditLogs(
+      request.user.orgId,
     );
   }
 

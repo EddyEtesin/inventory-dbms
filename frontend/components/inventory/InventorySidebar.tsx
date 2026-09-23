@@ -1,18 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+
 import {
   BarChart3,
   Boxes,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
+  LogOut,
   MapPin,
   Package,
   Settings,
   Truck,
-  Wrench,
 } from 'lucide-react';
 
 type InventorySidebarProps = {
@@ -63,17 +64,30 @@ export default function InventorySidebar({
   onToggle,
 }: InventorySidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function handleLogout() {
+    window.localStorage.removeItem(
+      'accessToken',
+    );
+
+    router.replace('/login');
+  }
 
   return (
     <aside
       className={`fixed left-0 top-0 z-40 hidden h-screen flex-col bg-[#2e4057] text-[#f5f0e3] md:flex ${
-        collapsed ? 'w-[68px]' : 'w-[205px]'
+        collapsed
+          ? 'w-[68px]'
+          : 'w-[205px]'
       }`}
     >
       {/* BRAND */}
       <div className="flex min-h-[72px] items-center border-b border-[#f5f0e3]/15 px-4">
         {collapsed ? (
-          <span className="mx-auto font-mono text-lg">IL</span>
+          <span className="mx-auto font-mono text-lg">
+            IL
+          </span>
         ) : (
           <div>
             <div className="font-mono text-[17px] tracking-[0.08em]">
@@ -96,46 +110,100 @@ export default function InventorySidebar({
             item.href === '/'
               ? pathname === '/'
               : pathname === item.href ||
-                pathname.startsWith(`${item.href}/`);
+                pathname.startsWith(
+                  `${item.href}/`,
+                );
 
           return (
             <Link
               key={item.label}
               href={item.href}
-              title={collapsed ? item.label : undefined}
+              title={
+                collapsed
+                  ? item.label
+                  : undefined
+              }
               className={`mb-1 flex items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest ${
                 active
                   ? 'bg-[#c68a2e] text-[#2b2620]'
                   : 'text-[#f5f0e3] hover:bg-[#f5f0e3]/10'
-              } ${collapsed ? 'justify-center' : ''}`}
+              } ${
+                collapsed
+                  ? 'justify-center'
+                  : ''
+              }`}
             >
-              <Icon size={16} strokeWidth={1.7} />
+              <Icon
+                size={16}
+                strokeWidth={1.7}
+              />
 
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && (
+                <span>{item.label}</span>
+              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* SETTINGS + COLLAPSE */}
+      {/* SETTINGS + LOGOUT + COLLAPSE */}
       <div className="border-t border-[#f5f0e3]/15 px-2.5 py-3">
         <Link
           href="/settings"
-          title={collapsed ? 'SETTINGS' : undefined}
+          title={
+            collapsed
+              ? 'SETTINGS'
+              : undefined
+          }
           className={`flex w-full items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest hover:bg-[#f5f0e3]/10 ${
-            collapsed ? 'justify-center' : ''
+            collapsed
+              ? 'justify-center'
+              : ''
           }`}
         >
-          <Settings size={16} strokeWidth={1.7} />
+          <Settings
+            size={16}
+            strokeWidth={1.7}
+          />
 
-          {!collapsed && <span>SETTINGS</span>}
+          {!collapsed && (
+            <span>SETTINGS</span>
+          )}
         </Link>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          title={
+            collapsed
+              ? 'LOG OUT'
+              : undefined
+          }
+          className={`mt-1 flex w-full items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest text-[#f5f0e3] hover:bg-[#a63a2e] hover:text-[#f5f0e3] ${
+            collapsed
+              ? 'justify-center'
+              : ''
+          }`}
+        >
+          <LogOut
+            size={16}
+            strokeWidth={1.7}
+          />
+
+          {!collapsed && (
+            <span>LOG OUT</span>
+          )}
+        </button>
 
         <button
           type="button"
           onClick={onToggle}
           className="mt-2 flex w-full justify-center border border-[#f5f0e3]/20 py-1.5"
-          title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={
+            collapsed
+              ? 'Expand navigation'
+              : 'Collapse navigation'
+          }
         >
           {collapsed ? (
             <ChevronRight size={15} />

@@ -12,6 +12,8 @@ import StockMovementReport, {
   type StockMovementSummary,
 } from '../../components/reports/StockMovementReport';
 import { apiFetch } from '../../lib/api';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
+import error from 'next/dist/api/error';
 
 type LocationOption = {
   id: string;
@@ -124,6 +126,8 @@ export default function ReportsPage() {
   const [reportError, setReportError] =
     useState('');
 
+
+
   async function loadReferenceData() {
     const token =
       window.localStorage.getItem(
@@ -172,6 +176,7 @@ export default function ReportsPage() {
       ),
     );
   }
+
 
   async function loadReport(
     nextFilters: ReportFilterState = filters,

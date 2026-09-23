@@ -70,6 +70,7 @@ type Item = {
   supplierId: string | null;
   unitOfMeasure: string;
   unitPrice: number | string;
+  sellingPrice: number | string | null;
   reorderLevel: number;
   status: 'active' | 'discontinued' | 'archived';
   category?: {
@@ -87,7 +88,6 @@ type ItemLocationRecord = {
   itemId: string;
   locationId: string;
   quantity: number;
-  reorderLevel?: number | null;
   location?: {
     id: string;
     name: string;
@@ -183,7 +183,11 @@ function formatLocationType(
     .toUpperCase();
 }
 
-export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'module' }) {
+export default function ItemsManager({
+  mode = 'module',
+}: {
+  mode?: 'setup' | 'module';
+}) {
   const router = useRouter();
 
   const [organization, setOrganization] =
@@ -212,8 +216,10 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
    * Used so that existing assignments are preserved
    * and only newly selected locations are attached.
    */
-  const [existingLocationIds, setExistingLocationIds] =
-    useState<string[]>([]);
+  const [
+    existingLocationIds,
+    setExistingLocationIds,
+  ] = useState<string[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -260,6 +266,9 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
   const [unitPrice, setUnitPrice] =
     useState('');
 
+  const [sellingPrice, setSellingPrice] =
+    useState('');
+
   const [reorderLevel, setReorderLevel] =
     useState('');
 
@@ -268,8 +277,10 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
       'active',
     );
 
-  const [selectedLocationIds, setSelectedLocationIds] =
-    useState<string[]>([]);
+  const [
+    selectedLocationIds,
+    setSelectedLocationIds,
+  ] = useState<string[]>([]);
 
   const [search, setSearch] =
     useState('');
@@ -510,6 +521,7 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
     setSupplierId('');
     setUnitOfMeasure('');
     setUnitPrice('');
+    setSellingPrice('');
     setReorderLevel('');
     setStatus('active');
 
@@ -567,6 +579,12 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
         String(item.unitPrice),
       );
 
+      setSellingPrice(
+        item.sellingPrice == null
+          ? ''
+          : String(item.sellingPrice),
+      );
+
       setReorderLevel(
         String(item.reorderLevel),
       );
@@ -605,10 +623,11 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
         );
 
       const ids = records
-        .map((record) =>
-          record.locationId ??
-          record.location?.id ??
-          '',
+        .map(
+          (record) =>
+            record.locationId ??
+            record.location?.id ??
+            '',
         )
         .filter(
           (value) =>
@@ -670,57 +689,57 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
   }
 
   async function syncLocations(
-  itemId: string,
-  token: string,
-  locationIds: string[],
-) {
-  const existingIds =
-    new Set(existingLocationIds);
+    itemId: string,
+    token: string,
+    locationIds: string[],
+  ) {
+    const existingIds =
+      new Set(existingLocationIds);
 
-  const selectedIds =
-    new Set(locationIds);
+    const selectedIds =
+      new Set(locationIds);
 
-  // Locations that were previously assigned
-  // but are no longer selected.
-  const removedLocationIds =
-    [...existingIds].filter(
-      (locationId) =>
-        !selectedIds.has(locationId),
-    );
+    // Locations that were previously assigned
+    // but are no longer selected.
+    const removedLocationIds =
+      [...existingIds].filter(
+        (locationId) =>
+          !selectedIds.has(locationId),
+      );
 
-  // Locations selected now that did not exist before.
-  const newLocationIds =
-    locationIds.filter(
-      (locationId) =>
-        !existingIds.has(locationId),
-    );
+    // Locations selected now that did not exist before.
+    const newLocationIds =
+      locationIds.filter(
+        (locationId) =>
+          !existingIds.has(locationId),
+      );
 
-  /*
-   * Remove old zero-balance assignments first.
-   */
-  for (const locationId of removedLocationIds) {
-    await apiFetch(
-      `/inventory/items/${itemId}/locations/${locationId}`,
-      token,
-      {
-        method: 'DELETE',
-      },
-    );
+    /*
+     * Remove old zero-balance assignments first.
+     */
+    for (const locationId of removedLocationIds) {
+      await apiFetch(
+        `/inventory/items/${itemId}/locations/${locationId}`,
+        token,
+        {
+          method: 'DELETE',
+        },
+      );
+    }
+
+    /*
+     * Create new assignments.
+     */
+    for (const locationId of newLocationIds) {
+      await apiFetch(
+        `/inventory/items/${itemId}/locations/${locationId}/initialize`,
+        token,
+        {
+          method: 'POST',
+        },
+      );
+    }
   }
-
-  /*
-   * Create new assignments.
-   */
-  for (const locationId of newLocationIds) {
-    await apiFetch(
-      `/inventory/items/${itemId}/locations/${locationId}/initialize`,
-      token,
-      {
-        method: 'POST',
-      },
-    );
-  }
-}
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
@@ -741,6 +760,14 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
 
     const numericUnitPrice =
       Number(unitPrice);
+
+    const trimmedSellingPrice =
+      sellingPrice.trim();
+
+    const numericSellingPrice =
+      trimmedSellingPrice === ''
+        ? null
+        : Number(trimmedSellingPrice);
 
     const numericReorderLevel =
       Number(reorderLevel);
@@ -774,6 +801,19 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
     ) {
       setFormError(
         'Enter a valid unit price.',
+      );
+      return;
+    }
+
+    if (
+      numericSellingPrice !== null &&
+      (!Number.isFinite(
+        numericSellingPrice,
+      ) ||
+        numericSellingPrice < 0)
+    ) {
+      setFormError(
+        'Enter a valid selling price.',
       );
       return;
     }
@@ -855,6 +895,11 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
         unitPrice:
           numericUnitPrice.toFixed(2),
 
+        sellingPrice:
+          numericSellingPrice === null
+            ? null
+            : numericSellingPrice.toFixed(2),
+
         reorderLevel:
           numericReorderLevel,
 
@@ -907,9 +952,9 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
        */
       if (savedItemId) {
         await syncLocations(
-            savedItemId,
-            token,
-            selectedLocationIds,
+          savedItemId,
+          token,
+          selectedLocationIds,
         );
       }
 
@@ -1010,7 +1055,10 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
             </div>
 
             <div className="hidden border-2 border-[#a63a2e] px-2.5 py-1 font-mono text-[7px] tracking-widest text-[#a63a2e] sm:block">
-              {mode === 'setup' ? 'ITEM SETUP' : 'ITEM REGISTER'} · {industryLabel}
+              {mode === 'setup'
+                ? 'ITEM SETUP'
+                : 'ITEM REGISTER'}{' '}
+              · {industryLabel}
             </div>
           </div>
         </header>
@@ -1024,7 +1072,9 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
             <div className="flex flex-col gap-4 border-b border-dashed border-[#b7a87e] pb-5 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                  {mode === 'setup' ? 'SETUP · 04 / 05' : 'ITEM REGISTER'}
+                  {mode === 'setup'
+                    ? 'SETUP · 04 / 05'
+                    : 'ITEM REGISTER'}
                 </div>
 
                 <h1 className="mt-1 font-mono text-[28px] leading-tight">
@@ -1216,10 +1266,17 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
                             </div>
 
                             <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
+                              UNIT{' '}
                               {formatCurrency(
                                 item.unitPrice,
                               )}{' '}
-                              · reorder{' '}
+                              · SELL{' '}
+                              {item.sellingPrice == null
+                                ? '—'
+                                : formatCurrency(
+                                    item.sellingPrice,
+                                  )}{' '}
+                              · REORDER{' '}
                               {item.reorderLevel}
                             </div>
 
@@ -1297,14 +1354,14 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
 
                             {locationsForItem.length >
                               0 && (
-                              <span className="font-mono text-[7px] text-[#5b5346]">
-                                {locationsForItem.length}{' '}
-                                {locationsForItem.length ===
-                                1
-                                  ? 'LOCATION'
-                                  : 'LOCATIONS'}
-                              </span>
-                            )}
+                                <span className="font-mono text-[7px] text-[#5b5346]">
+                                  {locationsForItem.length}{' '}
+                                  {locationsForItem.length ===
+                                  1
+                                    ? 'LOCATION'
+                                    : 'LOCATIONS'}
+                                </span>
+                              )}
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -1410,7 +1467,9 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
                   size={14}
                   strokeWidth={1.7}
                 />
-                {mode === 'setup' ? 'PREVIOUS · CATEGORIES' : 'BACK TO INVENTORY'}
+                {mode === 'setup'
+                  ? 'PREVIOUS · CATEGORIES'
+                  : 'BACK TO INVENTORY'}
               </button>
 
               <button
@@ -1422,7 +1481,9 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
                 }
                 className="flex items-center justify-center gap-2 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620]"
               >
-                {mode === 'setup' ? 'NEXT · OPENING BALANCES' : 'OPEN INVENTORY'}
+                {mode === 'setup'
+                  ? 'NEXT · OPENING BALANCES'
+                  : 'OPEN INVENTORY'}
                 <ArrowRight
                   size={14}
                   strokeWidth={1.7}
@@ -1674,6 +1735,27 @@ export default function ItemsManager({ mode = 'module' }: { mode?: 'setup' | 'mo
                         )
                       }
                       placeholder="0.00"
+                      inputMode="decimal"
+                      className="field-input"
+                    />
+                  </Field>
+
+                  <Field
+                    label="SELLING PRICE"
+                  >
+                    <input
+                      value={
+                        sellingPrice
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setSellingPrice(
+                          event.target
+                            .value,
+                        )
+                      }
+                      placeholder="Optional · 0.00"
                       inputMode="decimal"
                       className="field-input"
                     />
@@ -1957,6 +2039,3 @@ function Field({
     </label>
   );
 }
-
-
-

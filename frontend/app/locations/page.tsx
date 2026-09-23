@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 
 import InventorySidebar from '../../components/inventory/InventorySidebar';
 import { apiFetch } from '../../lib/api';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 type Organization = {
   id: string;
@@ -138,6 +139,23 @@ export default function LocationsPage() {
 
   const [expanded, setExpanded] =
     useState<Record<string, boolean>>({});
+
+  useAutoDismissMessage(error, setError);
+
+  useEffect(() => {
+  if (!error) {
+    return;
+  }
+
+      const timeoutId =
+        window.setTimeout(() => {
+          setError('');
+        }, 4000);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }, [error]);
 
   async function loadLocations() {
     try {

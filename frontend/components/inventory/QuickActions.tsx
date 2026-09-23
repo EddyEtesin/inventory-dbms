@@ -7,6 +7,7 @@ import {
   FileText,
   X,
 } from 'lucide-react';
+
 import {
   FormEvent,
   useEffect,
@@ -15,7 +16,10 @@ import {
 } from 'react';
 
 import { apiFetch } from '../../lib/api';
-import type { RegisterItem } from '../../types/inventory';
+
+import type {
+  RegisterItem,
+} from '../../types/inventory';
 
 type QuickActionType =
   | 'receive'
@@ -33,18 +37,25 @@ type OrganizationLocation = {
 type QuickActionsProps = {
   items: RegisterItem[];
   locations: OrganizationLocation[];
-  onCompleted: () => Promise<void> | void;
+  onCompleted:
+    () => Promise<void> | void;
+  compact?: boolean;
+  loading?: boolean;
 };
 
 export default function QuickActions({
   items,
   locations,
   onCompleted,
+  compact = false,
+  loading = false,
 }: QuickActionsProps) {
   const [action, setAction] =
     useState<QuickActionType>(null);
 
-  const [itemId, setItemId] = useState('');
+  const [itemId, setItemId] =
+    useState('');
+
   const [locationId, setLocationId] =
     useState('');
 
@@ -66,13 +77,15 @@ export default function QuickActions({
   const selectedItem = useMemo(
     () =>
       items.find(
-        (item) => item.id === itemId,
+        (item) =>
+          item.id === itemId,
       ) ?? null,
     [items, itemId],
   );
 
   const itemLocations =
-    selectedItem?.locationBreakdown ?? [];
+    selectedItem?.locationBreakdown ??
+    [];
 
   useEffect(() => {
     if (!selectedItem) {
@@ -82,19 +95,17 @@ export default function QuickActions({
     }
 
     const firstLocation =
-      selectedItem.locationBreakdown[0];
+      selectedItem
+        .locationBreakdown[0];
 
     setLocationId(
-      firstLocation?.locationId ?? '',
+      firstLocation?.locationId ??
+        '',
     );
 
     setTargetLocationId('');
   }, [selectedItem]);
 
-  /*
-   * LOCK BACKGROUND SCROLL WHILE
-   * QUICK ACTION MODAL IS OPEN.
-   */
   useEffect(() => {
     if (!action) {
       return;
@@ -127,11 +138,15 @@ export default function QuickActions({
     const firstItem = items[0];
 
     if (firstItem) {
-      setItemId(firstItem.id);
+      setItemId(
+        firstItem.id,
+      );
 
       setLocationId(
-        firstItem.locationBreakdown[0]
-          ?.locationId ?? '',
+        firstItem
+          .locationBreakdown[0]
+          ?.locationId ??
+          '',
       );
     } else {
       setItemId('');
@@ -165,17 +180,22 @@ export default function QuickActions({
     }
 
     if (!selectedItem) {
-      setError('Select an item.');
+      setError(
+        'Select an item.',
+      );
       return;
     }
 
-    const amount = Number(quantity);
+    const amount =
+      Number(quantity);
 
     const validAmount =
       Number.isInteger(amount) &&
-      (action === 'adjust'
-        ? amount !== 0
-        : amount > 0);
+      (
+        action === 'adjust'
+          ? amount !== 0
+          : amount > 0
+      );
 
     if (!validAmount) {
       setError(
@@ -188,7 +208,9 @@ export default function QuickActions({
     }
 
     if (!locationId) {
-      setError('Select a location.');
+      setError(
+        'Select a location.',
+      );
       return;
     }
 
@@ -199,13 +221,13 @@ export default function QuickActions({
       setError(
         'Select a destination location.',
       );
-
       return;
     }
 
     if (
       action === 'transfer' &&
-      locationId === targetLocationId
+      locationId ===
+        targetLocationId
     ) {
       setError(
         'Source and destination must be different.',
@@ -236,7 +258,9 @@ export default function QuickActions({
         unknown
       >;
 
-      if (action === 'receive') {
+      if (
+        action === 'receive'
+      ) {
         endpoint =
           `/inventory/items/${selectedItem.id}/locations/${locationId}/receive`;
 
@@ -248,7 +272,9 @@ export default function QuickActions({
             ? { notes }
             : {}),
         };
-      } else if (action === 'issue') {
+      } else if (
+        action === 'issue'
+      ) {
         endpoint =
           `/inventory/items/${selectedItem.id}/locations/${locationId}/issue`;
 
@@ -260,14 +286,15 @@ export default function QuickActions({
             ? { notes }
             : {}),
         };
-      } else if (action === 'adjust') {
+      } else if (
+        action === 'adjust'
+      ) {
         endpoint =
           `/inventory/items/${selectedItem.id}/locations/${locationId}/adjust`;
 
         body = {
           quantity: amount,
-          idempotencyKey:
-            crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
           ...(notes
             ? { notes }
             : {}),
@@ -279,11 +306,15 @@ export default function QuickActions({
         body = {
           fromLocationId:
             locationId,
+
           toLocationId:
             targetLocationId,
+
           quantity: amount,
+
           idempotencyKey:
             crypto.randomUUID(),
+
           ...(notes
             ? { notes }
             : {}),
@@ -295,7 +326,9 @@ export default function QuickActions({
         token,
         {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: JSON.stringify(
+            body,
+          ),
         },
       );
 
@@ -322,7 +355,8 @@ export default function QuickActions({
         ? 'ISSUE STOCK'
         : action === 'adjust'
           ? 'ADJUST STOCK'
-          : action === 'transfer'
+          : action ===
+              'transfer'
             ? 'TRANSFER STOCK'
             : '';
 
@@ -333,71 +367,101 @@ export default function QuickActions({
         ? 'Remove stock from a selected location.'
         : action === 'adjust'
           ? 'Record a stock correction.'
-          : action === 'transfer'
+          : action ===
+              'transfer'
             ? 'Move stock between locations.'
             : '';
 
+  const actionButtons = (
+    <>
+      <ActionButton
+        icon={ArrowDownToLine}
+        label="RECEIVE STOCK"
+        disabled={
+          loading ||
+          items.length === 0
+        }
+        onClick={() =>
+          openAction('receive')
+        }
+        compact={compact}
+      />
+
+      <ActionButton
+        icon={ArrowUpFromLine}
+        label="ISSUE STOCK"
+        disabled={
+          loading ||
+          items.length === 0
+        }
+        onClick={() =>
+          openAction('issue')
+        }
+        compact={compact}
+      />
+
+      <ActionButton
+        icon={ArrowLeftRight}
+        label="TRANSFER STOCK"
+        disabled={
+          loading ||
+          items.length === 0
+        }
+        onClick={() =>
+          openAction('transfer')
+        }
+        compact={compact}
+      />
+
+      <ActionButton
+        icon={FileText}
+        label="ADJUST STOCK"
+        disabled={
+          loading ||
+          items.length === 0
+        }
+        onClick={() =>
+          openAction('adjust')
+        }
+        compact={compact}
+      />
+    </>
+  );
+
   return (
     <>
-      {/* QUICK ACTIONS */}
-      <section className="border border-[#b7a87e] bg-[#f5f0e3] shadow-[1px_2px_0_#b7a87e]">
-        <div className="bg-[#2e4057] px-4 py-3 text-[#f5f0e3]">
-          <div className="font-mono text-[7px] tracking-widest">
-            OPERATIONS
+      {compact ? (
+        <section className="overflow-hidden border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_2px_0_#b7a87e]">
+          <div className="flex flex-col divide-y divide-dashed divide-[#b7a87e]">
+            {actionButtons}
+          </div>
+        </section>
+      ) : (
+        <section className="border border-[#b7a87e] bg-[#f5f0e3] shadow-[1px_2px_0_#b7a87e]">
+
+          <div className="bg-[#2e4057] px-4 py-3 text-[#f5f0e3]">
+            <div className="font-mono text-[7px] tracking-widest">
+              OPERATIONS
+            </div>
+
+            <h2 className="mt-1 font-mono text-[17px]">
+              QUICK ACTIONS
+            </h2>
           </div>
 
-          <h2 className="mt-1 font-mono text-[17px]">
-            QUICK ACTIONS
-          </h2>
-        </div>
+          {actionButtons}
 
-        <ActionButton
-          icon={ArrowDownToLine}
-          label="RECEIVE STOCK"
-          disabled={items.length === 0}
-          onClick={() =>
-            openAction('receive')
-          }
-        />
-
-        <ActionButton
-          icon={ArrowUpFromLine}
-          label="ISSUE STOCK"
-          disabled={items.length === 0}
-          onClick={() =>
-            openAction('issue')
-          }
-        />
-
-        <ActionButton
-          icon={ArrowLeftRight}
-          label="TRANSFER STOCK"
-          disabled={items.length === 0}
-          onClick={() =>
-            openAction('transfer')
-          }
-        />
-
-        <ActionButton
-          icon={FileText}
-          label="ADJUST STOCK"
-          disabled={items.length === 0}
-          onClick={() =>
-            openAction('adjust')
-          }
-        />
-
-        <div className="border-t border-dashed border-[#b7a87e] px-4 py-2 font-mono text-[7px] text-[#5b5346]">
-          {items.length > 0
-            ? 'Select an action to post to the ledger.'
-            : 'Add an inventory item first.'}
-        </div>
-      </section>
+          <div className="border-t border-dashed border-[#b7a87e] px-4 py-2 font-mono text-[7px] text-[#5b5346]">
+            {items.length > 0
+              ? 'Select an action to post to the ledger.'
+              : 'Add an inventory item first.'}
+          </div>
+        </section>
+      )}
 
       {/* QUICK ACTION MODAL */}
       {action && (
         <>
-          {/* BACKDROP */}
           <button
             type="button"
             aria-label="Close stock action"
@@ -405,14 +469,15 @@ export default function QuickActions({
             className="fixed inset-0 z-[60] bg-[#2b2620]/45"
           />
 
-          {/* MODAL CONTAINER */}
           <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4">
             <form
               onSubmit={handleSubmit}
               className="my-auto w-full max-w-[520px] border border-[#2b2620] bg-[#f5f0e3] p-5 shadow-[8px_10px_0_rgba(43,38,32,0.18)]"
             >
+
               {/* HEADER */}
               <div className="flex items-start justify-between border-b border-dashed border-[#b7a87e] pb-4">
+
                 <div>
                   <div className="font-mono text-[7px] tracking-widest text-[#a63a2e]">
                     STOCK ACTION
@@ -460,22 +525,25 @@ export default function QuickActions({
                     SELECT ITEM
                   </option>
 
-                  {items.map((item) => (
-                    <option
-                      key={item.id}
-                      value={item.id}
-                    >
-                      {item.name} ·{' '}
-                      {item.sku}
-                    </option>
-                  ))}
+                  {items.map(
+                    (item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                      >
+                        {item.name}{' '}
+                        · {item.sku}
+                      </option>
+                    ),
+                  )}
                 </select>
               </div>
 
               {/* LOCATION */}
               <div className="mt-4">
                 <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  {action === 'transfer'
+                  {action ===
+                  'transfer'
                     ? 'FROM LOCATION'
                     : 'LOCATION'}
                 </label>
@@ -521,7 +589,8 @@ export default function QuickActions({
               </div>
 
               {/* DESTINATION */}
-              {action === 'transfer' && (
+              {action ===
+                'transfer' && (
                 <div className="mt-4">
                   <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
                     TO LOCATION
@@ -533,7 +602,8 @@ export default function QuickActions({
                     }
                     onChange={(event) =>
                       setTargetLocationId(
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                     className="w-full border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[10px] outline-none"
@@ -545,18 +615,30 @@ export default function QuickActions({
 
                     {locations
                       .filter(
-                        (location) =>
+                        (
+                          location,
+                        ) =>
                           location.id !==
                           locationId,
                       )
-                      .map((location) => (
-                        <option
-                          key={location.id}
-                          value={location.id}
-                        >
-                          {location.name}
-                        </option>
-                      ))}
+                      .map(
+                        (
+                          location,
+                        ) => (
+                          <option
+                            key={
+                              location.id
+                            }
+                            value={
+                              location.id
+                            }
+                          >
+                            {
+                              location.name
+                            }
+                          </option>
+                        ),
+                      )}
                   </select>
                 </div>
               )}
@@ -564,7 +646,8 @@ export default function QuickActions({
               {/* QUANTITY */}
               <div className="mt-4">
                 <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  {action === 'adjust'
+                  {action ===
+                  'adjust'
                     ? 'ADJUSTMENT QUANTITY'
                     : 'QUANTITY'}
                 </label>
@@ -572,7 +655,8 @@ export default function QuickActions({
                 <input
                   type="number"
                   min={
-                    action === 'adjust'
+                    action ===
+                    'adjust'
                       ? undefined
                       : '1'
                   }
@@ -584,7 +668,8 @@ export default function QuickActions({
                     )
                   }
                   placeholder={
-                    action === 'adjust'
+                    action ===
+                    'adjust'
                       ? 'e.g. -10 or +10'
                       : '0'
                   }
@@ -592,10 +677,12 @@ export default function QuickActions({
                   required
                 />
 
-                {action === 'adjust' && (
+                {action ===
+                  'adjust' && (
                   <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                    Use a negative number to
-                    reduce stock.
+                    Use a negative
+                    number to reduce
+                    stock.
                   </div>
                 )}
               </div>
@@ -632,8 +719,12 @@ export default function QuickActions({
               <div className="mt-5 flex gap-2">
                 <button
                   type="button"
-                  onClick={closeAction}
-                  disabled={submitting}
+                  onClick={
+                    closeAction
+                  }
+                  disabled={
+                    submitting
+                  }
                   className="flex-1 border border-[#2b2620] px-4 py-2.5 font-mono text-[8px] tracking-widest disabled:opacity-40"
                 >
                   CANCEL
@@ -641,7 +732,9 @@ export default function QuickActions({
 
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={
+                    submitting
+                  }
                   className="flex-1 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620] disabled:opacity-50"
                 >
                   {submitting
@@ -662,25 +755,42 @@ function ActionButton({
   label,
   disabled,
   onClick,
+  compact,
 }: {
   icon: React.ElementType;
   label: string;
   disabled: boolean;
   onClick: () => void;
+  compact: boolean;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-3 border-b border-[#b7a87e] px-4 py-3 text-left font-mono text-[8px] tracking-widest hover:bg-[#eae2ce] disabled:cursor-not-allowed disabled:opacity-40"
+      className={`group flex w-full items-center gap-3 text-left font-mono text-[8px] tracking-widest transition-colors hover:bg-[#eae2ce] disabled:cursor-not-allowed disabled:opacity-40 ${
+        compact
+          ? 'min-h-[48px] px-4 py-2.5'
+          : 'border-b border-[#b7a87e] px-4 py-3'
+      }`}
     >
-      <Icon
-        size={16}
-        strokeWidth={1.7}
-      />
+      {compact ? (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#b7a87e] bg-[#eae2ce] text-[#2e4057] transition-colors group-hover:border-[#2e4057] group-hover:bg-[#2e4057] group-hover:text-[#f5f0e3]">
+          <Icon
+            size={15}
+            strokeWidth={1.7}
+          />
+        </span>
+      ) : (
+        <Icon
+          size={16}
+          strokeWidth={1.7}
+        />
+      )}
 
-      <span>{label}</span>
+      <span>
+        {label}
+      </span>
     </button>
   );
 }
@@ -689,9 +799,8 @@ function extractApiError(
   message: string,
 ) {
   try {
-    const parsed = JSON.parse(
-      message,
-    );
+    const parsed =
+      JSON.parse(message);
 
     if (
       Array.isArray(
@@ -710,7 +819,7 @@ function extractApiError(
       return parsed.message;
     }
   } catch {
-    // Keep the original message.
+    // Keep original message.
   }
 
   return message;

@@ -6,22 +6,34 @@ export type RegisterItem = {
   id: string;
   sku: string;
   name: string;
+
   category: {
     id: string;
     name: string;
   } | null;
+
   unitOfMeasure: string;
+
   unitPrice: number;
+
+  sellingPrice: number | null;
+
   quantity: number;
+
   locations: number;
+
   reorderLevel: number;
-  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+
+  status:
+    | 'IN_STOCK'
+    | 'LOW_STOCK'
+    | 'OUT_OF_STOCK';
+
   locationBreakdown: {
     id: string;
     locationId: string;
     locationName: string;
     quantity: number;
-    reorderLevel: number;
   }[];
 };
 

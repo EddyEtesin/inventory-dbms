@@ -1,45 +1,63 @@
 'use client';
 
 import {
-  AlertTriangle,
+  Activity,
+  Clock3,
+  History,
 } from 'lucide-react';
+
 import {
-  FormEvent,
   useEffect,
   useMemo,
   useState,
 } from 'react';
 
-import InventoryHeader from '../components/inventory/InventoryHeader';
-import InventoryRegister from '../components/inventory/InventoryRegister';
 import InventorySidebar from '../components/inventory/InventorySidebar';
 import InventoryStats from '../components/inventory/InventoryStats';
-import ItemDrawer from '../components/inventory/ItemDrawer';
 import QuickActions from '../components/inventory/QuickActions';
-
-import type {
-  Operation,
-  RegisterItem,
-  RegisterResponse,
-  Transaction,
-  TransactionResponse,
-} from '../types/inventory';
+import RecentActivity from '../components/inventory/RecentActivity';
 
 import { apiFetch } from '../lib/api';
+
+import type {
+  RegisterItem,
+  RegisterResponse,
+} from '../types/inventory';
 
 type OrganizationLocation = {
   id: string;
   name: string;
   locationType: string;
-  status: string;
+  status?: string;
 };
 
-export default function InventoryPage() {
+type MovementBucket = {
+  date: string;
+  received: number;
+  issued: number;
+  adjusted: number;
+  transferred: number;
+};
+
+type MovementTrendResponse = {
+  days: number;
+  fromDate: string;
+  toDate: string;
+  totals: {
+    received: number;
+    issued: number;
+    adjusted: number;
+    transferred: number;
+  };
+  data: MovementBucket[];
+};
+
+export default function DashboardPage() {
   const [collapsed, setCollapsed] =
     useState(false);
 
-  const [liveMode, setLiveMode] =
-    useState(false);
+  const [currentTime, setCurrentTime] =
+    useState('');
 
   const [items, setItems] =
     useState<RegisterItem[]>([]);
@@ -47,756 +65,930 @@ export default function InventoryPage() {
   const [organizationLocations, setOrganizationLocations] =
     useState<OrganizationLocation[]>([]);
 
-  const [loading, setLoading] =
+  const [dashboardLoading, setDashboardLoading] =
     useState(true);
 
-  const [error, setError] =
+  const [dashboardError, setDashboardError] =
     useState('');
 
-  const [search, setSearch] =
+  const [movement, setMovement] =
+    useState<MovementTrendResponse | null>(null);
+
+  const [movementLoading, setMovementLoading] =
+    useState(true);
+
+  const [movementError, setMovementError] =
     useState('');
-
-  const [statusFilter, setStatusFilter] =
-    useState<
-      | 'ALL'
-      | 'IN_STOCK'
-      | 'LOW_STOCK'
-      | 'OUT_OF_STOCK'
-    >('ALL');
-
-  const [selectedItem, setSelectedItem] =
-    useState<RegisterItem | null>(null);
-
-  const [operation, setOperation] =
-    useState<Operation>(null);
-
-  const [operationLocationId, setOperationLocationId] =
-    useState('');
-
-  const [targetLocationId, setTargetLocationId] =
-    useState('');
-
-  const [quantity, setQuantity] =
-    useState('');
-
-  const [reference, setReference] =
-    useState('');
-
-  const [notes, setNotes] =
-    useState('');
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [operationError, setOperationError] =
-    useState('');
-
-  const [transactions, setTransactions] =
-    useState<Transaction[]>([]);
-
-  const [transactionLoading, setTransactionLoading] =
-    useState(false);
-
-  const [transactionPage, setTransactionPage] =
-    useState(1);
-
-  const [transactionTotalPages, setTransactionTotalPages] =
-    useState(1);
-
-  const [hasNextTransactionPage, setHasNextTransactionPage] =
-    useState(false);
-
-  const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
-    useState(false);
-
-  const pageSize = 10;
-
-  async function loadInventory() {
-    try {
-      setLoading(true);
-      setError('');
-
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
-
-      if (!token) {
-        throw new Error(
-          'Please sign in first.',
-        );
-      }
-
-      const response =
-        await apiFetch<RegisterResponse>(
-          '/inventory/register',
-          token,
-        );
-
-      setItems(response.data);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to load inventory.',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadLocations() {
-    try {
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
-
-      if (!token) {
-        throw new Error(
-          'Please sign in first.',
-        );
-      }
-
-      const response =
-        await apiFetch<OrganizationLocation[]>(
-          '/locations',
-          token,
-        );
-
-      setOrganizationLocations(response);
-    } catch (err) {
-      console.error(
-        'Unable to load locations:',
-        err,
-      );
-
-      setOrganizationLocations([]);
-    }
-  }
 
   useEffect(() => {
-    loadInventory();
-    loadLocations();
+    function updateClock() {
+      setCurrentTime(
+        new Intl.DateTimeFormat(
+          'en-NG',
+          {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          },
+        ).format(new Date()),
+      );
+    }
 
-    const token =
-      window.localStorage.getItem(
-        'accessToken',
+    updateClock();
+
+    const interval =
+      window.setInterval(
+        updateClock,
+        1000,
       );
 
-    setLiveMode(Boolean(token));
+    return () =>
+      window.clearInterval(
+        interval,
+      );
   }, []);
 
-  const filteredItems = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        setDashboardLoading(true);
+        setDashboardError('');
 
-    return items.filter((item) => {
-      const matchesSearch =
-        !query ||
-        item.name
-          .toLowerCase()
-          .includes(query) ||
-        item.sku
-          .toLowerCase()
-          .includes(query) ||
-        item.category?.name
-          ?.toLowerCase()
-          .includes(query);
+        const token =
+          window.localStorage.getItem(
+            'accessToken',
+          );
 
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        item.status === statusFilter;
+        if (!token) {
+          throw new Error(
+            'Please sign in first.',
+          );
+        }
 
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
-    });
-  }, [
-    items,
-    search,
-    statusFilter,
-  ]);
+        const [
+          registerResponse,
+          locationResponse,
+        ] = await Promise.all([
+          apiFetch<RegisterResponse>(
+            '/inventory/register',
+            token,
+          ),
 
-  const loadTransactions = async (
-    item: RegisterItem,
-    locationId: string,
-    page = 1,
-  ) => {
-    try {
-      setTransactionLoading(true);
+          apiFetch<
+            OrganizationLocation[] | {
+              data: OrganizationLocation[];
+            }
+          >(
+            '/locations',
+            token,
+          ),
+        ]);
 
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
+        setItems(
+          registerResponse.data,
         );
 
-      if (!token) {
-        return;
+        const locations =
+          Array.isArray(
+            locationResponse,
+          )
+            ? locationResponse
+            : Array.isArray(
+                locationResponse.data,
+              )
+              ? locationResponse.data
+              : [];
+
+        setOrganizationLocations(
+          locations,
+        );
+      } catch (err) {
+        setDashboardError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to load dashboard data.',
+        );
+      } finally {
+        setDashboardLoading(false);
       }
+    }
 
-      const response =
-        await apiFetch<TransactionResponse>(
-          `/inventory/items/${item.id}/locations/${locationId}/transactions?page=${page}&pageSize=${pageSize}`,
-          token,
+    loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    async function loadMovement() {
+      try {
+        setMovementLoading(true);
+        setMovementError('');
+
+        const token =
+          window.localStorage.getItem(
+            'accessToken',
+          );
+
+        if (!token) {
+          throw new Error(
+            'Please sign in first.',
+          );
+        }
+
+        const response =
+          await apiFetch<MovementTrendResponse>(
+            '/inventory/movement-trend?days=7',
+            token,
+          );
+
+        setMovement(response);
+      } catch (err) {
+        setMovementError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to load stock movement.',
         );
-
-      setTransactions(response.data);
-
-      setTransactionPage(
-        response.pagination.page,
-      );
-
-      setTransactionTotalPages(
-        response.pagination.totalPages,
-      );
-
-      setHasNextTransactionPage(
-        response.pagination.hasNextPage,
-      );
-
-      setHasPreviousTransactionPage(
-        response.pagination.hasPreviousPage,
-      );
-    } catch (err) {
-      console.error(
-        'Unable to load transactions:',
-        err,
-      );
-    } finally {
-      setTransactionLoading(false);
-    }
-  };
-
-  const openItem = async (
-    item: RegisterItem,
-  ) => {
-    setSelectedItem(item);
-    setOperation(null);
-    setOperationError('');
-
-    setTransactionPage(1);
-    setTransactionTotalPages(1);
-    setHasNextTransactionPage(false);
-    setHasPreviousTransactionPage(false);
-
-    const firstLocation =
-      item.locationBreakdown[0];
-
-    if (firstLocation) {
-      setOperationLocationId(
-        firstLocation.locationId,
-      );
-
-      await loadTransactions(
-        item,
-        firstLocation.locationId,
-        1,
-      );
-    } else {
-      setOperationLocationId('');
-      setTransactions([]);
-    }
-  };
-
-  const closeDrawer = () => {
-    if (submitting) {
-      return;
-    }
-
-    setSelectedItem(null);
-    setOperation(null);
-    setTransactions([]);
-    setTransactionPage(1);
-    setTransactionTotalPages(1);
-    setHasNextTransactionPage(false);
-    setHasPreviousTransactionPage(false);
-    resetOperationForm();
-  };
-
-  const resetOperationForm = () => {
-    setOperationLocationId('');
-    setTargetLocationId('');
-    setQuantity('');
-    setReference('');
-    setNotes('');
-    setOperationError('');
-  };
-
-  const startOperation = (
-    nextOperation: Operation,
-  ) => {
-    if (!selectedItem) {
-      return;
-    }
-
-    setOperation(nextOperation);
-    setOperationError('');
-
-    if (
-      nextOperation !== 'transfer' &&
-      selectedItem.locationBreakdown.length >
-        0
-    ) {
-      setOperationLocationId(
-        selectedItem
-          .locationBreakdown[0]
-          .locationId,
-      );
-    }
-
-    if (nextOperation === 'transfer') {
-      setTargetLocationId('');
-    }
-  };
-
-  const handleOperationSubmit = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-
-    if (!selectedItem || !operation) {
-      return;
-    }
-
-    const amount =
-      Number(quantity);
-
-    const validAmount =
-      Number.isInteger(amount) &&
-      (
-        operation === 'adjust'
-          ? amount !== 0
-          : amount > 0
-      );
-
-    if (!validAmount) {
-      setOperationError(
-        operation === 'adjust'
-          ? 'Enter a non-zero whole number. Use a negative value to reduce stock.'
-          : 'Enter a valid positive whole number.',
-      );
-
-      return;
-    }
-
-    if (
-      !operationLocationId &&
-      operation !== 'transfer'
-    ) {
-      setOperationError(
-        'Select a location.',
-      );
-
-      return;
-    }
-
-    if (
-      operation === 'transfer' &&
-      (
-        !operationLocationId ||
-        !targetLocationId
-      )
-    ) {
-      setOperationError(
-        'Select both source and destination locations.',
-      );
-
-      return;
-    }
-
-    if (
-      operation === 'transfer' &&
-      operationLocationId ===
-        targetLocationId
-    ) {
-      setOperationError(
-        'Source and destination must be different.',
-      );
-
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      setOperationError('');
-
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
-
-      if (!token) {
-        throw new Error(
-          'Please sign in first.',
-        );
+      } finally {
+        setMovementLoading(false);
       }
-
-      let endpoint = '';
-
-      let body: Record<
-        string,
-        unknown
-      >;
-
-      if (
-        operation === 'receive'
-      ) {
-        endpoint =
-          `/inventory/items/${selectedItem.id}/locations/${operationLocationId}/receive`;
-
-        body = {
-          quantity: amount,
-          idempotencyKey:
-            crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
-          ...(notes
-            ? { notes }
-            : {}),
-        };
-      } else if (
-        operation === 'issue'
-      ) {
-        endpoint =
-          `/inventory/items/${selectedItem.id}/locations/${operationLocationId}/issue`;
-
-        body = {
-          quantity: amount,
-          idempotencyKey:
-            crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
-          ...(notes
-            ? { notes }
-            : {}),
-        };
-      } else if (
-        operation === 'adjust'
-      ) {
-        endpoint =
-          `/inventory/items/${selectedItem.id}/locations/${operationLocationId}/adjust`;
-
-        body = {
-          quantity: amount,
-          ...(reference
-            ? { reference }
-            : {}),
-          ...(notes
-            ? { notes }
-            : {}),
-        };
-      } else {
-        endpoint =
-          `/inventory/items/${selectedItem.id}/transfer`;
-
-        body = {
-          fromLocationId:
-            operationLocationId,
-          toLocationId:
-            targetLocationId,
-          quantity: amount,
-          idempotencyKey:
-            crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
-          ...(notes
-            ? { notes }
-            : {}),
-        };
-      }
-
-      await apiFetch(
-        endpoint,
-        token,
-        {
-          method: 'POST',
-          body: JSON.stringify(body),
-        },
-      );
-
-      await loadInventory();
-
-      const updatedItem =
-        items.find(
-          (item) =>
-            item.id ===
-            selectedItem.id,
-        );
-
-      if (updatedItem) {
-        setSelectedItem(
-          updatedItem,
-        );
-      }
-
-      if (
-        operation !== 'transfer' &&
-        operationLocationId
-      ) {
-        await loadTransactions(
-          selectedItem,
-          operationLocationId,
-          1,
-        );
-      }
-
-      await loadLocations();
-
-      resetOperationForm();
-      setOperation(null);
-    } catch (err) {
-      setOperationError(
-        err instanceof Error
-          ? err.message
-          : 'Stock operation failed.',
-      );
-    } finally {
-      setSubmitting(false);
     }
-  };
 
-  const handleDrawerLocationSelect =
-    async (
-      locationId: string,
-    ) => {
-      if (!selectedItem) {
-        return;
-      }
+    loadMovement();
+  }, []);
 
-      setOperationLocationId(
-        locationId,
-      );
-
-      setTransactionPage(1);
-      setTransactionTotalPages(1);
-      setHasNextTransactionPage(false);
-      setHasPreviousTransactionPage(false);
-
-      await loadTransactions(
-        selectedItem,
-        locationId,
-        1,
-      );
+  const movementTotals =
+    movement?.totals ?? {
+      received: 0,
+      issued: 0,
+      adjusted: 0,
+      transferred: 0,
     };
 
-  const handlePreviousPage = () => {
-    if (
-      !selectedItem ||
-      !operationLocationId ||
-      !hasPreviousTransactionPage ||
-      transactionLoading
-    ) {
-      return;
-    }
+  const chartData = useMemo(() => {
+    const data =
+      movement?.data ?? [];
 
-    loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage - 1,
+    const step = Math.max(
+      1,
+      Math.ceil(
+        data.length / 10,
+      ),
     );
-  };
 
-  const handleNextPage = () => {
-    if (
-      !selectedItem ||
-      !operationLocationId ||
-      !hasNextTransactionPage ||
-      transactionLoading
-    ) {
-      return;
-    }
-
-    loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage + 1,
+    return data.filter(
+      (_, index) =>
+        index % step === 0 ||
+        index === data.length - 1,
     );
-  };
+  }, [movement]);
+
+  const chartMax = useMemo(() => {
+    return Math.max(
+      1,
+      ...(movement?.data ?? []).flatMap(
+        (bucket) => [
+          bucket.received,
+          bucket.issued,
+          bucket.adjusted,
+          bucket.transferred,
+        ],
+      ),
+    );
+  }, [movement]);
+
+  async function handleQuickActionCompleted() {
+    window.location.reload();
+  }
 
   return (
-    <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
+    <main className="min-h-screen bg-[#d5c8ae] text-[#2b2620]">
       <InventorySidebar
         collapsed={collapsed}
         onToggle={() =>
           setCollapsed(
-            (value) => !value,
+            (current) => !current,
           )
         }
       />
 
       <div
-        className={`min-h-screen ${
+        className={`min-h-screen transition-[padding] duration-200 ${
           collapsed
             ? 'md:pl-[68px]'
             : 'md:pl-[205px]'
         }`}
       >
         <div className="p-3 md:p-5">
-          <div className="mx-auto max-w-[1400px]">
+          <div className="mx-auto max-w-[1450px]">
 
-            {/* HEADER */}
-            <InventoryHeader
-              search={search}
-              statusFilter={
-                statusFilter
-              }
-              onSearchChange={
-                setSearch
-              }
-              onStatusChange={
-                setStatusFilter
-              }
-            />
+            {/* COMMAND CENTRE HEADER */}
+            <section className="overflow-hidden border border-[#2e4057] bg-[#f5f0e3] shadow-[0_3px_0_#2e4057,0_14px_30px_rgba(43,38,32,0.12)]">
+              <div className="flex flex-col gap-4 bg-[#2e4057] px-5 py-5 text-[#f5f0e3] md:flex-row md:items-center md:justify-between md:px-7">
+                <div>
+                  <div className="flex items-center gap-2 font-mono text-[7px] tracking-[0.25em] text-[#d5c8ae]">
+                    <Activity
+                      size={11}
+                      strokeWidth={1.8}
+                    />
 
-            {/* ERROR */}
-            {error && (
-              <div className="mt-3 flex items-center gap-3 border border-[#a63a2e] bg-[#f5f0e3] px-4 py-3">
-                <AlertTriangle
-                  size={16}
-                  className="text-[#a63a2e]"
+                    INVENTORY COMMAND CENTRE
+                  </div>
+
+                  <h1 className="mt-2 font-mono text-[27px] leading-none tracking-[0.03em]">
+                    DASHBOARD
+                  </h1>
+
+                  <p className="mt-2 max-w-[650px] font-mono text-[8px] leading-5 text-[#ddd0b8]">
+                    A live overview of your
+                    inventory position, stock
+                    health and the latest
+                    activity across your
+                    organization.
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-start gap-2 md:items-end">
+                  <div className="flex items-center gap-2 border border-[#d5c8ae]/40 px-3 py-2">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8db596]" />
+
+                    <span className="font-mono text-[7px] tracking-widest">
+                      SYSTEM OPERATIONAL
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 font-mono text-[7px] text-[#d5c8ae]">
+                    <Clock3
+                      size={11}
+                      strokeWidth={1.6}
+                    />
+
+                    {currentTime
+                      ? `SYNC ${currentTime}`
+                      : 'SYNCING...'}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* INVENTORY SNAPSHOT */}
+            <section className="mt-5">
+              <div className="mb-3">
+                <div className="font-mono text-[7px] tracking-[0.2em] text-[#a63a2e]">
+                  INVENTORY SNAPSHOT
+                </div>
+              </div>
+
+              <div className="overflow-hidden border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_2px_0_#b7a87e]">
+                <InventoryStats />
+              </div>
+            </section>
+
+            {/* RECENT ACTIVITY + QUICK ACTIONS */}
+            <section className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="min-w-0">
+                <RecentActivity />
+              </div>
+
+              <div className="min-w-0">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 font-mono text-[7px] tracking-[0.2em] text-[#a63a2e]">
+                    <History
+                      size={12}
+                      strokeWidth={1.7}
+                    />
+
+                    QUICK ACTIONS
+                  </div>
+
+                  <h2 className="mt-1 font-mono text-[20px]">
+                    Quick Actions
+                  </h2>
+
+                  <p className="mt-1 font-mono text-[7px] text-[#5b5346]">
+                    Perform stock operations
+                    quickly.
+                  </p>
+                </div>
+
+                {dashboardError ? (
+                  <div className="border border-[#a63a2e]/30 bg-[#f5f0e3] px-4 py-4 font-mono text-[8px] text-[#a63a2e]">
+                    {dashboardError}
+                  </div>
+                ) : (
+                  <QuickActions
+                    items={items}
+                    locations={
+                      organizationLocations
+                    }
+                    onCompleted={
+                      handleQuickActionCompleted
+                    }
+                    compact
+                    loading={
+                      dashboardLoading
+                    }
+                  />
+                )}
+              </div>
+            </section>
+
+            {/* STOCK MOVEMENT */}
+            <section className="mt-6 border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_2px_0_#b7a87e]">
+              <div className="border-b border-dashed border-[#b7a87e] px-4 py-4 md:px-5">
+                <div className="font-mono text-[7px] tracking-[0.2em] text-[#a63a2e]">
+                  STOCK MOVEMENT
+                </div>
+
+                <h2 className="mt-1 font-mono text-[20px]">
+                  Movement overview
+                </h2>
+              </div>
+
+              <div className="grid border-b border-[#b7a87e] sm:grid-cols-2 lg:grid-cols-4">
+                <MovementMetric
+                  label="RECEIVED"
+                  value={
+                    movementLoading
+                      ? '—'
+                      : formatQuantity(
+                          movementTotals.received,
+                        )
+                  }
                 />
 
-                <span className="font-mono text-[9px] text-[#a63a2e]">
-                  {error}
-                </span>
-              </div>
-            )}
-
-            {/* DASHBOARD STATS */}
-            <InventoryStats />
-
-            {/* REGISTER + QUICK ACTIONS */}
-            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
-
-              <InventoryRegister
-                items={
-                  filteredItems
-                }
-                loading={loading}
-                onOpenItem={
-                  openItem
-                }
-              />
-
-              <QuickActions
-                items={items}
-                locations={
-                  organizationLocations
-                }
-                onCompleted={
-                  async () => {
-                    await loadInventory();
-                    await loadLocations();
+                <MovementMetric
+                  label="ISSUED"
+                  value={
+                    movementLoading
+                      ? '—'
+                      : formatQuantity(
+                          movementTotals.issued,
+                        )
                   }
-                }
-              />
-            </div>
+                />
 
-            {/* FOOTER */}
-            <footer className="mt-4 border-t border-dashed border-[#b7a87e] pt-2 font-mono text-[7px] text-[#5b5346]">
-              <div className="flex justify-between">
+                <MovementMetric
+                  label="ADJUSTED"
+                  value={
+                    movementLoading
+                      ? '—'
+                      : formatQuantity(
+                          movementTotals.adjusted,
+                        )
+                  }
+                />
+
+                <MovementMetric
+                  label="TRANSFERRED"
+                  value={
+                    movementLoading
+                      ? '—'
+                      : formatQuantity(
+                          movementTotals.transferred,
+                        )
+                  }
+                />
+              </div>
+
+              <div className="p-5">
+                {movementError ? (
+                  <div className="border border-[#a63a2e]/30 bg-[#eae2ce] px-4 py-4 font-mono text-[8px] text-[#a63a2e]">
+                    {movementError}
+                  </div>
+                ) : movementLoading ? (
+                  <div className="flex min-h-[220px] items-center justify-center border border-dashed border-[#b7a87e] bg-[#eae2ce]">
+                    <div className="font-mono text-[8px] tracking-[0.18em] text-[#5b5346]">
+                      LOADING MOVEMENT DATA...
+                    </div>
+                  </div>
+                ) : (
+                  <MovementChart
+                    data={chartData}
+                    max={chartMax}
+                  />
+                )}
+              </div>
+            </section>
+
+            <footer className="mt-6 border-t border-dashed border-[#b7a87e] pt-3">
+              <div className="flex flex-col gap-1 font-mono text-[7px] text-[#5b5346] md:flex-row md:items-center md:justify-between">
                 <span>
-                  INVENTORY LEDGER ·
-                  STOCK RECORDS
+                  STOCKPILE · INVENTORY
+                  COMMAND CENTRE
                 </span>
 
                 <span>
-                  {liveMode
-                    ? 'LIVE DATABASE'
-                    : 'INVENTORY'}
+                  LIVE DATABASE
                 </span>
               </div>
             </footer>
           </div>
         </div>
       </div>
-
-      {/* ITEM DRAWER */}
-      <ItemDrawer
-        selectedItem={
-          selectedItem
-        }
-        organizationLocations={
-          organizationLocations
-        }
-        operation={
-          operation
-        }
-        operationLocationId={
-          operationLocationId
-        }
-        targetLocationId={
-          targetLocationId
-        }
-        quantity={quantity}
-        reference={reference}
-        notes={notes}
-        submitting={
-          submitting
-        }
-        operationError={
-          operationError
-        }
-        transactions={
-          transactions
-        }
-        transactionLoading={
-          transactionLoading
-        }
-        transactionPage={
-          transactionPage
-        }
-        transactionTotalPages={
-          transactionTotalPages
-        }
-        hasNextTransactionPage={
-          hasNextTransactionPage
-        }
-        hasPreviousTransactionPage={
-          hasPreviousTransactionPage
-        }
-        onClose={
-          closeDrawer
-        }
-        onLocationSelect={
-          handleDrawerLocationSelect
-        }
-        onStartOperation={
-          startOperation
-        }
-        onOperationSubmit={
-          handleOperationSubmit
-        }
-        onOperationCancel={() =>
-          setOperation(null)
-        }
-        onOperationLocationChange={
-          setOperationLocationId
-        }
-        onTargetLocationChange={
-          setTargetLocationId
-        }
-        onQuantityChange={
-          setQuantity
-        }
-        onReferenceChange={
-          setReference
-        }
-        onNotesChange={
-          setNotes
-        }
-        onPreviousPage={
-          handlePreviousPage
-        }
-        onNextPage={
-          handleNextPage
-        }
-      />
     </main>
+  );
+}
+
+function MovementMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="border-b border-[#b7a87e] px-4 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="font-mono text-[7px] tracking-[0.16em] text-[#8a7f6b]">
+        {label}
+      </div>
+
+      <div className="mt-2 font-mono text-[22px] text-[#2e4057]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MovementChart({
+  data,
+  max,
+}: {
+  data: MovementBucket[];
+  max: number;
+}) {
+  const [hoveredBucket, setHoveredBucket] =
+    useState<MovementBucket | null>(null);
+
+  const [tooltipVisible, setTooltipVisible] =
+    useState(false);
+
+  const [tooltipPosition, setTooltipPosition] =
+    useState({
+      x: 0,
+      y: 0,
+    });
+
+  if (data.length === 0) {
+    return (
+      <div className="flex min-h-[220px] items-center justify-center border border-dashed border-[#b7a87e] bg-[#eae2ce]">
+        <div className="text-center">
+          <div className="font-mono text-[8px] tracking-[0.18em] text-[#5b5346]">
+            MOVEMENT TREND
+          </div>
+
+          <div className="mt-2 font-mono text-[7px] leading-4 text-[#8a7f6b]">
+            No stock movement recorded
+            in the selected period.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const chartWidth = 1100;
+  const chartHeight = 320;
+
+  const paddingLeft = 48;
+  const paddingRight = 18;
+  const paddingTop = 20;
+  const paddingBottom = 48;
+
+  const innerWidth =
+    chartWidth - paddingLeft - paddingRight;
+
+  const innerHeight =
+    chartHeight - paddingTop - paddingBottom;
+
+  const groupWidth =
+    innerWidth / data.length;
+
+  const barGap = 2;
+
+  const barWidth = Math.max(
+    4,
+    Math.min(
+      14,
+      (groupWidth - 10) / 4,
+    ),
+  );
+
+  const groupBarWidth =
+    barWidth * 4 + barGap * 3;
+
+  const y = (value: number) => {
+    return (
+      paddingTop +
+      innerHeight -
+      (value / Math.max(max, 1)) *
+        innerHeight
+    );
+  };
+
+  const yTicks = Array.from(
+    { length: 5 },
+    (_, index) =>
+      Math.round((max / 4) * index),
+  );
+
+  return (
+    <div className="relative border border-dashed border-[#b7a87e] bg-[#eae2ce] p-4">
+      <div className="mb-4 flex flex-wrap items-center gap-4 font-mono text-[7px] tracking-[0.08em] text-[#5b5346]">
+        <LegendMark
+          label="RECEIVED"
+          className="bg-[#3d6b4f]"
+        />
+
+        <LegendMark
+          label="ISSUED"
+          className="bg-[#a63a2e]"
+        />
+
+        <LegendMark
+          label="ADJUSTED"
+          className="bg-[#2e4057]"
+        />
+
+        <LegendMark
+          label="TRANSFERRED"
+          className="bg-[#c68a2e]"
+        />
+
+        <span className="ml-auto">
+          {formatChartDate(data[0].date)} –{' '}
+          {formatChartDate(
+            data[data.length - 1].date,
+          )}
+        </span>
+      </div>
+
+      <div
+        className="relative w-full overflow-visible"
+        onMouseLeave={() => {
+          setTooltipVisible(false);
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="h-[300px] w-full overflow-visible"
+          role="img"
+          aria-label="Stock movement bar chart"
+        >
+          {yTicks.map((tick, index) => {
+            const tickY = y(tick);
+
+            return (
+              <g
+                key={`y-tick-${index}`}
+              >
+                <line
+                  x1={paddingLeft}
+                  x2={
+                    chartWidth -
+                    paddingRight
+                  }
+                  y1={tickY}
+                  y2={tickY}
+                  stroke="#b7a87e"
+                  strokeWidth="1"
+                  strokeDasharray="3 4"
+                  opacity="0.4"
+                />
+
+                <text
+                  x={paddingLeft - 8}
+                  y={tickY + 3}
+                  textAnchor="end"
+                  fill="#8a7f6b"
+                  fontSize="8"
+                  fontFamily="monospace"
+                >
+                  {formatQuantity(tick)}
+                </text>
+              </g>
+            );
+          })}
+
+          <line
+            x1={paddingLeft}
+            x2={paddingLeft}
+            y1={paddingTop}
+            y2={
+              paddingTop +
+              innerHeight
+            }
+            stroke="#b7a87e"
+            strokeWidth="1"
+            opacity="0.6"
+          />
+
+          <line
+            x1={paddingLeft}
+            x2={
+              chartWidth -
+              paddingRight
+            }
+            y1={
+              paddingTop +
+              innerHeight
+            }
+            y2={
+              paddingTop +
+              innerHeight
+            }
+            stroke="#b7a87e"
+            strokeWidth="1"
+            opacity="0.6"
+          />
+
+          {data.map((bucket, index) => {
+            const groupCenter =
+              paddingLeft +
+              index * groupWidth +
+              groupWidth / 2;
+
+            const groupStart =
+              groupCenter -
+              groupBarWidth / 2;
+
+            const values = [
+              {
+                label: 'Received',
+                value: bucket.received,
+                color: '#3d6b4f',
+              },
+              {
+                label: 'Issued',
+                value: bucket.issued,
+                color: '#a63a2e',
+              },
+              {
+                label: 'Adjusted',
+                value: bucket.adjusted,
+                color: '#2e4057',
+              },
+              {
+                label: 'Transferred',
+                value: bucket.transferred,
+                color: '#c68a2e',
+              },
+            ];
+
+            return (
+              <g key={bucket.date}>
+                {values.map(
+                  (
+                    entry,
+                    barIndex,
+                  ) => {
+                    const barHeight =
+                      entry.value > 0
+                        ? Math.max(
+                            1,
+                            (entry.value /
+                              Math.max(
+                                max,
+                                1,
+                              )) *
+                              innerHeight,
+                          )
+                        : 0;
+
+                    const barX =
+                      groupStart +
+                      barIndex *
+                        (barWidth +
+                          barGap);
+
+                    const barY =
+                      paddingTop +
+                      innerHeight -
+                      barHeight;
+
+                    return (
+                      <rect
+                        key={`${bucket.date}-${entry.label}`}
+                        x={barX}
+                        y={barY}
+                        width={barWidth}
+                        height={barHeight}
+                        rx="1"
+                        fill={
+                          entry.color
+                        }
+                        opacity={
+                          hoveredBucket?.date ===
+                          bucket.date
+                            ? 1
+                            : 0.85
+                        }
+                        onMouseEnter={() => {
+                          setHoveredBucket(
+                            bucket,
+                          );
+
+                          setTooltipVisible(
+                            true,
+                          );
+
+                          setTooltipPosition(
+                            {
+                              x: groupCenter,
+                              y: Math.max(
+                                12,
+                                barY - 8,
+                              ),
+                            },
+                          );
+                        }}
+                      />
+                    );
+                  },
+                )}
+
+                <text
+                  x={groupCenter}
+                  y={chartHeight - 16}
+                  textAnchor="middle"
+                  fill="#8a7f6b"
+                  fontSize="7"
+                  fontFamily="monospace"
+                >
+                  {formatChartDate(
+                    bucket.date,
+                  )}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoveredBucket && (
+          <div
+            aria-hidden={!tooltipVisible}
+            className="pointer-events-none absolute z-20 w-[205px] rounded-[3px] border border-[#b7a87e]/70 bg-[#f5f0e3] px-3 py-3 shadow-[0_5px_14px_rgba(43,38,32,0.10)] transition-[left,top,opacity,transform] duration-150 ease-out"
+            style={{
+              left: `${
+                (tooltipPosition.x /
+                  chartWidth) *
+                100
+              }%`,
+              top: `${
+                (tooltipPosition.y /
+                  chartHeight) *
+                100
+              }%`,
+              opacity:
+                tooltipVisible ? 1 : 0,
+              transform: `translate(-50%, -100%) translateY(${
+                tooltipVisible ? '-6px' : '-2px'
+              }) scale(${
+                tooltipVisible ? 1 : 0.97
+              })`,
+            }}
+          >
+            <div className="border-b border-dashed border-[#b7a87e]/60 pb-2">
+              <div className="font-mono text-[9px] font-bold tracking-[0.06em] text-[#2e4057]">
+                {formatLongChartDate(
+                  hoveredBucket.date,
+                )}
+              </div>
+
+              <div className="mt-1 font-mono text-[6px] tracking-[0.14em] text-[#8a7f6b]">
+                DAILY STOCK MOVEMENT
+              </div>
+            </div>
+
+            <div className="mt-2 space-y-1.5">
+              <TooltipMetric
+                label="RECEIVED"
+                value={
+                  hoveredBucket.received
+                }
+                className="bg-[#3d6b4f]"
+              />
+
+              <TooltipMetric
+                label="ISSUED"
+                value={
+                  hoveredBucket.issued
+                }
+                className="bg-[#a63a2e]"
+              />
+
+              <TooltipMetric
+                label="ADJUSTED"
+                value={
+                  hoveredBucket.adjusted
+                }
+                className="bg-[#2e4057]"
+              />
+
+              <TooltipMetric
+                label="TRANSFERRED"
+                value={
+                  hoveredBucket.transferred
+                }
+                className="bg-[#c68a2e]"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 font-mono text-[6px] leading-4 text-[#8a7f6b]">
+        Hover a bar to view daily movement
+        details.
+      </div>
+    </div>
+  );
+}
+
+function TooltipMetric({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: number;
+  className: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1.5">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-[1px] ${className}`}
+        />
+
+        <span className="font-mono text-[7px] tracking-[0.06em] text-[#5b5346]">
+          {label}
+        </span>
+      </div>
+
+      <span className="font-mono text-[8px] font-bold text-[#2b2620]">
+        {formatQuantity(value)}
+      </span>
+    </div>
+  );
+}
+
+function formatLongChartDate(
+  value: string,
+) {
+  return new Intl.DateTimeFormat(
+    'en-NG',
+    {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    },
+  ).format(
+    new Date(
+      `${value}T00:00:00Z`,
+    ),
+  );
+}
+
+function LegendMark({
+  label,
+  className,
+}: {
+  label: string;
+  className: string;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className={`h-2 w-2 ${className}`}
+      />
+
+      {label}
+    </span>
+  );
+}
+
+function formatQuantity(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    'en-NG',
+  ).format(value);
+}
+
+function formatChartDate(
+  value: string,
+) {
+  return new Intl.DateTimeFormat(
+    'en-NG',
+    {
+      day: '2-digit',
+      month: 'short',
+    },
+  ).format(
+    new Date(
+      `${value}T00:00:00Z`,
+    ),
   );
 }

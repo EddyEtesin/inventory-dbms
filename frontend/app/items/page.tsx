@@ -21,6 +21,7 @@ import { useRouter } from 'next/navigation';
 import InventorySidebar from '../../components/inventory/InventorySidebar';
 import ItemDrawer from '../../components/inventory/ItemDrawer';
 import { apiFetch } from '../../lib/api';
+import { useAutoDismissMessage } from '../../hooks/useAutoDismissMessage';
 
 import type {
   Operation,
@@ -78,6 +79,7 @@ type Item = {
   supplierId: string | null;
   unitOfMeasure: string;
   unitPrice: number | string;
+  sellingPrice: number | string | null;
   reorderLevel: number;
   status: 'active' | 'discontinued' | 'archived';
   category?: {
@@ -279,6 +281,9 @@ export default function ItemsPage() {
   const [unitPrice, setUnitPrice] =
     useState('');
 
+  const [sellingPrice, setSellingPrice] =
+    useState('');
+
   const [reorderLevel, setReorderLevel] =
     useState('');
 
@@ -286,6 +291,8 @@ export default function ItemsPage() {
     useState<
       'active' | 'discontinued'
     >('active');
+
+  useAutoDismissMessage(error, setError);
 
   async function fetchItemLocations(
     itemId: string,
@@ -351,8 +358,6 @@ export default function ItemsPage() {
             record.location?.name ??
             'Unknown location',
           quantity: record.quantity,
-          reorderLevel:
-            item.reorderLevel,
         }));
 
     const totalQuantity =
@@ -381,6 +386,10 @@ export default function ItemsPage() {
       unitPrice: Number(
         item.unitPrice,
       ),
+      sellingPrice:
+        item.sellingPrice == null
+          ? null
+          : Number(item.sellingPrice),
       quantity: totalQuantity,
       locations:
         locationBreakdown.length,
@@ -523,6 +532,7 @@ export default function ItemsPage() {
     setSupplierId('');
     setUnitOfMeasure('');
     setUnitPrice('');
+    setSellingPrice('');
     setReorderLevel('');
     setStatus('active');
     setSelectedLocationIds([]);
@@ -596,6 +606,11 @@ export default function ItemsPage() {
       );
       setUnitPrice(
         String(item.unitPrice),
+      );
+      setSellingPrice(
+        item.sellingPrice == null
+          ? ''
+          : String(item.sellingPrice),
       );
       setReorderLevel(
         String(item.reorderLevel),
@@ -723,6 +738,14 @@ export default function ItemsPage() {
     const numericUnitPrice =
       Number(unitPrice);
 
+    const trimmedSellingPrice =
+      sellingPrice.trim();
+
+    const numericSellingPrice =
+      trimmedSellingPrice === ''
+        ? null
+        : Number(trimmedSellingPrice);
+
     const numericReorderLevel =
       Number(reorderLevel);
 
@@ -755,6 +778,19 @@ export default function ItemsPage() {
     ) {
       setFormError(
         'Enter a valid unit price.',
+      );
+      return;
+    }
+
+    if (
+      numericSellingPrice !== null &&
+      (!Number.isFinite(
+        numericSellingPrice,
+      ) ||
+        numericSellingPrice < 0)
+    ) {
+      setFormError(
+        'Enter a valid selling price.',
       );
       return;
     }
@@ -835,6 +871,12 @@ export default function ItemsPage() {
           numericUnitPrice.toFixed(
             2,
           ),
+        sellingPrice:
+          numericSellingPrice === null
+            ? null
+            : numericSellingPrice.toFixed(
+                2,
+              ),
         reorderLevel:
           numericReorderLevel,
         ...(editingItem
@@ -1296,6 +1338,8 @@ export default function ItemsPage() {
 
         body = {
           quantity: amount,
+          idempotencyKey:
+            crypto.randomUUID(),
           ...(reference
             ? { reference }
             : {}),
@@ -1717,10 +1761,14 @@ export default function ItemsPage() {
                                       {formatCurrency(
                                         item.unitPrice,
                                       )}{' '}
-                                      · reorder{' '}
-                                      {
-                                        item.reorderLevel
-                                      }
+                                      · sell {' '}
+                                      {item.sellingPrice == null
+                                        ? '—'
+                                        : formatCurrency(
+                                            item.sellingPrice,
+                                          )}{' '}
+                                      · reorder {' '}
+                                      {item.reorderLevel}
                                     </div>
                                   </td>
 
@@ -2132,6 +2180,23 @@ export default function ItemsPage() {
                 </Field>
 
                 <Field
+                  label="SELLING PRICE"
+                >
+                  <input
+                    value={sellingPrice}
+                    onChange={(event) =>
+                      setSellingPrice(
+                        event.target
+                          .value,
+                      )
+                    }
+                    inputMode="decimal"
+                    className="field-input"
+                    placeholder="Optional · 0.00"
+                  />
+                </Field>
+
+                <Field
                   label="REORDER LEVEL"
                   required
                 >
@@ -2382,4 +2447,3 @@ function Field({
     </label>
   );
 }
-

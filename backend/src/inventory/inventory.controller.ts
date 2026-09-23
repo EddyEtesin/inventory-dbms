@@ -229,7 +229,7 @@ export class InventoryController {
     );
   }
 
-    @Get('items/:itemId/summary')
+  @Get('items/:itemId/summary')
   @RequirePermissions('item.view')
   getInventorySummary(
     @Req() request: AuthenticatedRequest,
@@ -306,7 +306,7 @@ export class InventoryController {
     );
   }
 
-    @Get('location-reorder-analysis')
+  @Get('location-reorder-analysis')
   @RequirePermissions('item.view')
   getLocationReorderAnalysis(
     @Req() request: AuthenticatedRequest,
@@ -316,23 +316,46 @@ export class InventoryController {
     );
   }
 
-@Get('activity/recent')
-@RequirePermissions('item.view')
-getRecentInventoryActivity(
-  @Req() request: AuthenticatedRequest,
-) {
-  return this.inventoryService.getRecentInventoryActivity(
-    request.user.orgId,
-  );
-}
+  @Get('activity/recent')
+  @RequirePermissions('item.view')
+  getRecentInventoryActivity(
+    @Req() request: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+  ) {
 
-@Get('register')
-@RequirePermissions('item.view')
-getInventoryRegister(
-  @Req() request: AuthenticatedRequest,
-) {
-  return this.inventoryService.getInventoryRegister(
-    request.user.orgId,
-  );
-}
+    const parsedLimit = limit
+    ? Number(limit)
+    : 20;
+
+    return this.inventoryService.getRecentInventoryActivity(
+      request.user.orgId,
+      Number.isFinite(parsedLimit)
+      ? parsedLimit
+      : 20,
+    );
+  }
+
+  @Get('movement-trend')
+  @RequirePermissions('item.view')
+  getStockMovementTrend(
+    @Req() request: AuthenticatedRequest,
+    @Query('days') days?: string,
+  ) {
+    const parsedDays = days ? Number(days) : 30;
+
+    return this.inventoryService.getStockMovementTrend(
+      request.user.orgId,
+      Number.isFinite(parsedDays) ? parsedDays : 30,
+    );
+  }
+
+  @Get('register')
+  @RequirePermissions('item.view')
+  getInventoryRegister(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.getInventoryRegister(
+      request.user.orgId,
+    );
+  }
 }

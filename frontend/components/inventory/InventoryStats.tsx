@@ -7,11 +7,7 @@ import {
   PackageOpen,
   X,
 } from 'lucide-react';
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { apiFetch } from '../../lib/api';
 
@@ -29,24 +25,12 @@ type OrganizationLocation = {
   locationType: string;
 };
 
-type AlertType =
-  | 'reorder'
-  | 'outOfStock'
-  | null;
-
-type TransferRecommendation = {
-  fromLocationId: string;
-  fromLocationName: string;
-  quantity: number;
-};
+type AlertType = 'reorder' | 'outOfStock' | null;
 
 type ReorderLocation = {
   locationId: string;
   locationName: string;
   quantity: number;
-  reorderLevel: number;
-  shortfall: number;
-  suggestedPurchase: number;
 };
 
 type ReorderItem = {
@@ -66,9 +50,7 @@ type OutOfStockItem = {
 
 export default function InventoryStats() {
   const [summary, setSummary] =
-    useState<InventorySummaryResponse | null>(
-      null,
-    );
+    useState<InventorySummaryResponse | null>(null);
 
   const [items, setItems] =
     useState<RegisterItem[]>([]);
@@ -85,11 +67,15 @@ export default function InventoryStats() {
   const [alertType, setAlertType] =
     useState<AlertType>(null);
 
-  const [selectedReorderItem, setSelectedReorderItem] =
-    useState<ReorderItem | null>(null);
+  const [
+    selectedReorderItem,
+    setSelectedReorderItem,
+  ] = useState<ReorderItem | null>(null);
 
-  const [selectedOutOfStockItem, setSelectedOutOfStockItem] =
-    useState<OutOfStockItem | null>(null);
+  const [
+    selectedOutOfStockItem,
+    setSelectedOutOfStockItem,
+  ] = useState<OutOfStockItem | null>(null);
 
   const [detailLoading, setDetailLoading] =
     useState(false);
@@ -136,7 +122,10 @@ export default function InventoryStats() {
             OrganizationLocation[] | {
               data: OrganizationLocation[];
             }
-          >('/locations', token),
+          >(
+            '/locations',
+            token,
+          ),
         ]);
 
         const locationData =
@@ -155,9 +144,7 @@ export default function InventoryStats() {
 
         setError(
           err instanceof Error
-            ? extractApiError(
-                err.message,
-              )
+            ? extractApiError(err.message)
             : 'Unable to load inventory dashboard.',
         );
       } finally {
@@ -171,91 +158,61 @@ export default function InventoryStats() {
   // --------------------------------------------------
   // REORDER ITEMS
   //
-  // An item appears once if at least one of its
-  // locations is at or below that location's
-  // reorder threshold.
+  // Reorder level is an item-level threshold.
+  // The item's total organizational quantity is
+  // compared with the item's reorder level.
+  //
+  // Location breakdown is retained only to show
+  // where the item's stock is currently held.
   // --------------------------------------------------
 
   const reorderItems = useMemo<ReorderItem[]>(
-  () => {
-    return items
-      .map((item) => {
-        const lowLocations =
-          item.locationBreakdown.filter(
-            (location) =>
-              location.quantity <=
-              location.reorderLevel,
+    () => {
+      return items
+        .map((item) => {
+          if (
+            item.quantity >
+            item.reorderLevel
+          ) {
+            return null;
+          }
+
+          const shortfall = Math.max(
+            item.reorderLevel -
+              item.quantity,
+            0,
           );
 
-        if (lowLocations.length === 0) {
-          return null;
-        }
-
-        const detailedLocations: ReorderLocation[] =
-          lowLocations.map((location) => {
-            const shortfall =
-              Math.max(
-                location.reorderLevel -
+          const detailedLocations: ReorderLocation[] =
+            item.locationBreakdown.map(
+              (location) => ({
+                locationId:
+                  location.locationId,
+                locationName:
+                  location.locationName,
+                quantity:
                   location.quantity,
-                0,
-              );
+              }),
+            );
 
-            return {
-              locationId:
-                location.locationId,
-
-              locationName:
-                location.locationName,
-
-              quantity:
-                location.quantity,
-
-              reorderLevel:
-                location.reorderLevel,
-
+          return {
+            item,
+            locations: detailedLocations,
+            totalShortfall:
               shortfall,
-
-              /*
-               * The reorder recommendation is based
-               * only on what this location is missing.
-               */
-              suggestedPurchase:
-                shortfall,
-            };
-          });
-
-        return {
-          item,
-
-          locations:
-            detailedLocations,
-
-          totalShortfall:
-            detailedLocations.reduce(
-              (total, location) =>
-                total +
-                location.shortfall,
-              0,
-            ),
-
-          totalSuggestedPurchase:
-            detailedLocations.reduce(
-              (total, location) =>
-                total +
-                location.suggestedPurchase,
-              0,
-            ),
-        };
-      })
-      .filter(
-        (
-          item,
-        ): item is ReorderItem =>
-          item !== null,
-      );
-  },
-  [items],
-);
+            totalSuggestedPurchase:
+              shortfall,
+          };
+        })
+        .filter(
+          (
+            item,
+          ): item is ReorderItem =>
+            item !== null,
+        );
+    },
+    [items],
+  );
 
   // --------------------------------------------------
   // OUT OF STOCK ITEMS
@@ -264,35 +221,41 @@ export default function InventoryStats() {
   // --------------------------------------------------
 
   const outOfStockItems =
-    useMemo<OutOfStockItem[]>(() => {
-      return items
-        .filter(
-          (item) =>
-            item.quantity === 0,
-        )
-        .map((item) => ({
-          item,
-          lastMovement: null,
-        }));
-    }, [items]);
+    useMemo<OutOfStockItem[]>(
+      () => {
+        return items
+          .filter(
+            (item) =>
+              item.quantity === 0,
+          )
+          .map((item) => ({
+            item,
+            lastMovement: null,
+          }));
+      },
+      [items],
+    );
 
   // --------------------------------------------------
   // CARD CLICK HANDLERS
   // --------------------------------------------------
 
-  async function openReorderDetails() {
+  function openReorderDetails() {
     setAlertType('reorder');
-    setSelectedOutOfStockItem(null);
+    setSelectedOutOfStockItem(
+      null,
+    );
     setDetailError('');
   }
 
-  async function openOutOfStockDetails() {
+  function openOutOfStockDetails() {
     setAlertType('outOfStock');
-    setSelectedReorderItem(null);
+    setSelectedReorderItem(
+      null,
+    );
     setDetailError('');
-
-    // Nothing else needs to be fetched until a
-    // specific out-of-stock item is selected.
+    // Nothing else needs to be fetched until
+    // a specific out-of-stock item is selected.
   }
 
   function closeDetails() {
@@ -301,8 +264,12 @@ export default function InventoryStats() {
     }
 
     setAlertType(null);
-    setSelectedReorderItem(null);
-    setSelectedOutOfStockItem(null);
+    setSelectedReorderItem(
+      null,
+    );
+    setSelectedOutOfStockItem(
+      null,
+    );
     setDetailError('');
   }
 
@@ -314,7 +281,9 @@ export default function InventoryStats() {
     item: ReorderItem,
   ) {
     setSelectedReorderItem(item);
-    setSelectedOutOfStockItem(null);
+    setSelectedOutOfStockItem(
+      null,
+    );
     setDetailError('');
   }
 
@@ -431,12 +400,9 @@ export default function InventoryStats() {
   const outOfStockCount =
     outOfStockItems.length;
 
-  /*
-   * Prefer the calculated item count when
-   * register data is available, because it uses
-   * the same location-aware logic shown in the
-   * drill-down.
-   */
+  // Prefer the calculated item count when register
+  // data is available, because it uses the same
+  // item-level reorder logic shown in the drill-down.
   const displayedReorderCount =
     items.length > 0
       ? reorderCount
@@ -453,9 +419,8 @@ export default function InventoryStats() {
       {/* DASHBOARD STAT CARDS */}
       {/* -------------------------------------------- */}
 
-      <section className="mt-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-
+      <section className="mt-0">
+        <div className="grid grid-cols-1 divide-y divide-dashed divide-[#b7a87e] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 xl:divide-x xl:divide-y-0">
           <StatCard
             value={
               loading
@@ -465,7 +430,7 @@ export default function InventoryStats() {
                       0,
                   )
             }
-            label="ITEMS LOGGED"
+            label="ITEMS"
           />
 
           <StatCard
@@ -473,11 +438,7 @@ export default function InventoryStats() {
               loading
                 ? '—'
                 : String(
-                    locations.filter(
-                      (location) =>
-                        location !==
-                        undefined,
-                    ).length,
+                    locations.length,
                   )
             }
             label="LOCATIONS"
@@ -493,6 +454,7 @@ export default function InventoryStats() {
                   )
             }
             label="STOCK VALUE"
+            valueClassName="text-[19px]"
           />
 
           <StatCard
@@ -503,7 +465,7 @@ export default function InventoryStats() {
                     displayedReorderCount,
                   )
             }
-            label="NEEDS REORDER"
+            label="REORDER"
             danger
             clickable={
               !loading &&
@@ -523,7 +485,7 @@ export default function InventoryStats() {
                     displayedOutOfStockCount,
                   )
             }
-            label="OUT OF STOCK"
+            label="OUT"
             critical
             clickable={
               !loading &&
@@ -533,6 +495,11 @@ export default function InventoryStats() {
             onClick={
               openOutOfStockDetails
             }
+          />
+
+          <StatCard
+            value="—"
+            label="EXPIR"
           />
         </div>
 
@@ -549,8 +516,7 @@ export default function InventoryStats() {
       {/* NEEDS REORDER MODAL */}
       {/* -------------------------------------------- */}
 
-      {alertType ===
-        'reorder' && (
+      {alertType === 'reorder' && (
         <ModalOverlay
           onClose={closeDetails}
           disabled={detailLoading}
@@ -560,7 +526,12 @@ export default function InventoryStats() {
               <ModalHeader
                 eyebrow="INVENTORY ALERT"
                 title="NEEDS REORDER"
-                subtitle={`${reorderItems.length} distinct ${reorderItems.length === 1 ? 'item requires' : 'items require'} attention.`}
+                subtitle={`${reorderItems.length} distinct ${
+                  reorderItems.length ===
+                  1
+                    ? 'item requires'
+                    : 'items require'
+                } attention.`}
                 onClose={
                   closeDetails
                 }
@@ -569,9 +540,7 @@ export default function InventoryStats() {
               <div className="max-h-[65vh] overflow-y-auto">
                 {reorderItems.length ===
                 0 ? (
-                  <EmptyState
-                    message="No items currently require reorder."
-                  />
+                  <EmptyState message="No items currently require reorder." />
                 ) : (
                   reorderItems.map(
                     (entry) => (
@@ -589,18 +558,27 @@ export default function InventoryStats() {
                       >
                         <div>
                           <div className="font-mono text-[10px]">
-                            {entry.item.name}
+                            {
+                              entry
+                                .item
+                                .name
+                            }
                           </div>
 
                           <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                            {entry.item.sku}
+                            {
+                              entry
+                                .item
+                                .sku
+                            }
                             {' · '}
                             {
-                              entry.locations
+                              entry
+                                .locations
                                 .length
                             }{' '}
-                            low-stock{' '}
-                            {entry.locations
+                            {entry
+                              .locations
                               .length ===
                             1
                               ? 'location'
@@ -656,8 +634,7 @@ export default function InventoryStats() {
       {/* OUT OF STOCK MODAL */}
       {/* -------------------------------------------- */}
 
-      {alertType ===
-        'outOfStock' && (
+      {alertType === 'outOfStock' && (
         <ModalOverlay
           onClose={closeDetails}
           disabled={detailLoading}
@@ -667,7 +644,12 @@ export default function InventoryStats() {
               <ModalHeader
                 eyebrow="INVENTORY ALERT"
                 title="OUT OF STOCK"
-                subtitle={`${outOfStockItems.length} ${outOfStockItems.length === 1 ? 'item has' : 'items have'} reached zero organizational stock.`}
+                subtitle={`${outOfStockItems.length} ${
+                  outOfStockItems.length ===
+                  1
+                    ? 'item has'
+                    : 'items have'
+                } reached zero organizational stock.`}
                 onClose={
                   closeDetails
                 }
@@ -676,9 +658,7 @@ export default function InventoryStats() {
               <div className="max-h-[65vh] overflow-y-auto">
                 {outOfStockItems.length ===
                 0 ? (
-                  <EmptyState
-                    message="No items are currently out of stock."
-                  />
+                  <EmptyState message="No items are currently out of stock." />
                 ) : (
                   outOfStockItems.map(
                     (entry) => (
@@ -696,11 +676,19 @@ export default function InventoryStats() {
                       >
                         <div>
                           <div className="font-mono text-[10px]">
-                            {entry.item.name}
+                            {
+                              entry
+                                .item
+                                .name
+                            }
                           </div>
 
                           <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                            {entry.item.sku}
+                            {
+                              entry
+                                .item
+                                .sku
+                            }
                           </div>
                         </div>
 
@@ -766,6 +754,7 @@ function StatCard({
   critical = false,
   clickable = false,
   onClick,
+  valueClassName = 'text-[23px]',
 }: {
   value: string;
   label: string;
@@ -773,25 +762,17 @@ function StatCard({
   critical?: boolean;
   clickable?: boolean;
   onClick?: () => void;
+  valueClassName?: string;
 }) {
-  const borderClass =
-    critical
-      ? 'border-[#7f211c]'
-      : danger
-        ? 'border-[#a63a2e]'
-        : 'border-[#2e4057]';
+  const textClass = critical
+    ? 'text-[#7f211c]'
+    : danger
+      ? 'text-[#a63a2e]'
+      : 'text-[#2e4057]';
 
-  const textClass =
-    critical
-      ? 'text-[#7f211c]'
-      : danger
-        ? 'text-[#a63a2e]'
-        : 'text-[#2e4057]';
-
-  const Component =
-    clickable
-      ? 'button'
-      : 'div';
+  const Component = clickable
+    ? 'button'
+    : 'div';
 
   return (
     <Component
@@ -805,20 +786,20 @@ function StatCard({
           ? onClick
           : undefined
       }
-      className={`group relative border bg-[#f5f0e3] px-4 py-4 text-center ${borderClass} ${
+      className={`group relative flex min-h-[96px] flex-col items-center justify-center gap-2 bg-[#f5f0e3] px-4 py-5 text-center ${
         clickable
-          ? 'cursor-pointer transition hover:-translate-y-[1px] hover:bg-[#eae2ce]'
+          ? 'cursor-pointer transition-colors hover:bg-[#eae2ce]'
           : ''
       }`}
     >
       <div
-        className={`font-mono text-[23px] leading-none ${textClass}`}
+        className={`min-w-0 whitespace-nowrap font-mono font-semibold leading-none tracking-tight ${valueClassName} ${textClass}`}
       >
         {value}
       </div>
 
       <div
-        className={`mt-2 font-mono text-[7px] tracking-widest ${textClass}`}
+        className={`font-mono text-[7px] font-medium tracking-[0.18em] ${textClass}`}
       >
         {label}
       </div>
@@ -852,8 +833,7 @@ function ModalOverlay({
 }) {
   useEffect(() => {
     const originalOverflow =
-      document.body.style
-        .overflow;
+      document.body.style.overflow;
 
     document.body.style.overflow =
       'hidden';
@@ -948,57 +928,103 @@ function ReorderDetailPanel({
       <ModalHeader
         eyebrow="REORDER DETAIL"
         title={entry.item.name}
-        subtitle={`${entry.item.sku} · ${entry.locations.length} location${entry.locations.length === 1 ? '' : 's'} require attention.`}
+        subtitle={`${entry.item.sku} · ${entry.locations.length} location${
+          entry.locations.length ===
+          1
+            ? ''
+            : 's'
+        }.`}
         onClose={onClose}
       />
 
       <div className="max-h-[70vh] overflow-y-auto p-5">
-
-        {entry.locations.map(
-          (location) => (
-            <div
-              key={location.locationId}
-              className="border border-[#b7a87e]"
-            >
-              {/* LOCATION */}
-              <div className="border-b border-dashed border-[#b7a87e] px-4 py-3">
-                <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                  AFFECTED LOCATION
-                </div>
-
-                <div className="mt-1 font-mono text-[14px]">
-                  {location.locationName}
-                </div>
-              </div>
-
-              {/* STOCK SUMMARY */}
-              <div className="grid gap-2 p-4 sm:grid-cols-4">
-                <DetailBox
-                  label="CURRENT"
-                  value={`${location.quantity} ${entry.item.unitOfMeasure}`}
-                />
-
-                <DetailBox
-                  label="REORDER LEVEL"
-                  value={`${location.reorderLevel} ${entry.item.unitOfMeasure}`}
-                />
-
-                <DetailBox
-                  label="SHORTFALL"
-                  value={`${location.shortfall} ${entry.item.unitOfMeasure}`}
-                  danger
-                />
-
-                <DetailBox
-                  label="UNIT PRICE"
-                  value={formatCurrency(
-                    entry.item.unitPrice,
-                  )}
-                />
-              </div>
+        {/* ITEM STOCK SUMMARY */}
+        <div className="border border-[#b7a87e]">
+          <div className="border-b border-dashed border-[#b7a87e] px-4 py-3">
+            <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
+              ITEM STOCK STATUS
             </div>
-          ),
-        )}
+
+            <div className="mt-1 font-mono text-[14px]">
+              Organization-wide stock
+            </div>
+          </div>
+
+          <div className="grid gap-2 p-4 sm:grid-cols-4">
+            <DetailBox
+              label="CURRENT"
+              value={`${entry.item.quantity} ${entry.item.unitOfMeasure}`}
+            />
+
+            <DetailBox
+              label="REORDER LEVEL"
+              value={`${entry.item.reorderLevel} ${entry.item.unitOfMeasure}`}
+            />
+
+            <DetailBox
+              label="SHORTFALL"
+              value={`${entry.totalShortfall} ${entry.item.unitOfMeasure}`}
+              danger
+            />
+
+            <DetailBox
+              label="UNIT PRICE"
+              value={formatCurrency(
+                entry.item.unitPrice,
+              )}
+            />
+          </div>
+        </div>
+
+        {/* STOCK BY LOCATION */}
+        <div className="mt-5">
+          <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
+            STOCK BY LOCATION
+          </div>
+
+          <div className="mt-2 border border-[#b7a87e]">
+            <div className="grid grid-cols-[1fr_90px] border-b border-dashed border-[#b7a87e] bg-[#ddd0b8] px-4 py-2 font-mono text-[7px] tracking-widest text-[#5b5346]">
+              <span>LOCATION</span>
+              <span>QTY</span>
+            </div>
+
+            {entry.locations.length ===
+            0 ? (
+              <div className="px-4 py-4 font-mono text-[8px] text-[#5b5346]">
+                No location balances
+                are currently
+                available.
+              </div>
+            ) : (
+              entry.locations.map(
+                (location) => (
+                  <div
+                    key={
+                      location.locationId
+                    }
+                    className="grid grid-cols-[1fr_90px] border-b border-dashed border-[#b7a87e] px-4 py-3 last:border-b-0"
+                  >
+                    <span className="font-mono text-[8px]">
+                      {
+                        location.locationName
+                      }
+                    </span>
+
+                    <span className="font-mono text-[8px]">
+                      {
+                        location.quantity
+                      }{' '}
+                      {
+                        entry.item
+                          .unitOfMeasure
+                      }
+                    </span>
+                  </div>
+                ),
+              )
+            )}
+          </div>
+        </div>
 
         {/* REPLENISHMENT */}
         <div className="mt-5">
@@ -1012,13 +1038,19 @@ function ReorderDetailPanel({
             </div>
 
             <div className="mt-1 font-mono text-[18px] text-[#9b681b]">
-              {entry.totalSuggestedPurchase}{' '}
-              {entry.item.unitOfMeasure}
+              {
+                entry.totalSuggestedPurchase
+              }{' '}
+              {
+                entry.item
+                  .unitOfMeasure
+              }
             </div>
 
             <div className="mt-2 font-mono text-[8px] text-[#5b5346]">
-              Replenish the affected location to
-              its reorder level.
+              Replenish the item to
+              its item-level reorder
+              threshold.
             </div>
           </div>
         </div>
@@ -1045,6 +1077,7 @@ function ReorderDetailPanel({
     </div>
   );
 }
+
 /* ================================================== */
 /* OUT OF STOCK DETAIL                                 */
 /* ================================================== */
@@ -1072,7 +1105,6 @@ function OutOfStockDetailPanel({
       />
 
       <div className="p-5">
-
         <div className="grid gap-2 sm:grid-cols-4">
           <DetailBox
             label="CURRENT STOCK"
@@ -1107,7 +1139,8 @@ function OutOfStockDetailPanel({
 
           {loading ? (
             <div className="mt-3 border border-dashed border-[#b7a87e] p-4 text-center font-mono text-[8px] text-[#5b5346]">
-              LOADING TRANSACTION HISTORY...
+              LOADING TRANSACTION
+              HISTORY...
             </div>
           ) : error ? (
             <div className="mt-3 border border-[#a63a2e] bg-[#a63a2e]/5 px-3 py-3 font-mono text-[8px] text-[#a63a2e]">
@@ -1115,8 +1148,9 @@ function OutOfStockDetailPanel({
             </div>
           ) : !entry.lastMovement ? (
             <div className="mt-3 border border-dashed border-[#b7a87e] p-4 text-center font-mono text-[8px] italic text-[#5b5346]">
-              No transaction history was found for
-              this item.
+              No transaction history
+              was found for this
+              item.
             </div>
           ) : (
             <div className="mt-3 border border-[#b7a87e]">
@@ -1149,7 +1183,17 @@ function OutOfStockDetailPanel({
 
                 <DetailBox
                   label="QUANTITY"
-                  value={`${entry.lastMovement.transaction.quantity > 0 ? '+' : ''}${entry.lastMovement.transaction.quantity}`}
+                  value={`${
+                    entry.lastMovement
+                      .transaction
+                      .quantity > 0
+                      ? '+'
+                      : ''
+                  }${
+                    entry.lastMovement
+                      .transaction
+                      .quantity
+                  }`}
                   danger={
                     entry.lastMovement
                       .transaction
@@ -1164,12 +1208,10 @@ function OutOfStockDetailPanel({
                 </div>
 
                 <div className="mt-1 font-mono text-[9px]">
-                  {
-                    entry.lastMovement
-                      .transaction
-                      .reference ??
-                    '—'
-                  }
+                  {entry.lastMovement
+                    .transaction
+                    .reference ??
+                    '—'}
                 </div>
               </div>
 
@@ -1182,7 +1224,8 @@ function OutOfStockDetailPanel({
 
                   <div className="mt-1 font-mono text-[8px]">
                     {
-                      entry.lastMovement
+                      entry
+                        .lastMovement
                         .transaction
                         .notes
                     }
@@ -1207,7 +1250,8 @@ function OutOfStockDetailPanel({
               </div>
 
               <div className="mt-1 font-mono text-[9px] text-[#a63a2e]">
-                Suggested initial replenishment:{' '}
+                Suggested initial
+                replenishment:{' '}
                 {
                   entry.item
                     .reorderLevel
@@ -1267,34 +1311,6 @@ function DetailBox({
           danger
             ? 'text-[#a63a2e]'
             : 'text-[#2b2620]'
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-  danger = false,
-}: {
-  label: string;
-  value: string;
-  danger?: boolean;
-}) {
-  return (
-    <div className="border border-dashed border-[#b7a87e] p-2">
-      <div className="font-mono text-[6px] tracking-widest text-[#5b5346]">
-        {label}
-      </div>
-
-      <div
-        className={`mt-1 font-mono text-[10px] ${
-          danger
-            ? 'text-[#a63a2e]'
-            : 'text-[#2e4057]'
         }`}
       >
         {value}
