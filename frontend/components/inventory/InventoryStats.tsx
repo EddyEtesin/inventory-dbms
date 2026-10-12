@@ -91,149 +91,196 @@ export default function InventoryStats() {
   // --------------------------------------------------
 
   useEffect(() => {
-    async function loadDashboardData() {
-      try {
+  let mounted = true;
+
+  async function loadDashboardData(
+    silent = false,
+  ) {
+    try {
+      if (!silent) {
         setLoading(true);
         setError('');
+      }
 
-        const token =
-          window.localStorage.getItem('accessToken');
+      const token =
+        window.localStorage.getItem('accessToken');
 
-        if (!token) {
+      if (!token) {
+        if (!silent) {
           setLoading(false);
-          return;
         }
+        return;
+      }
 
-        const [
-          summaryResponse,
-          registerResponse,
-          locationResponse,
-        ] = await Promise.all([
-          apiFetch<InventorySummaryResponse>(
-            '/inventory/summary',
-            token,
-          ),
+      const [
+        summaryResponse,
+        registerResponse,
+        locationResponse,
+      ] = await Promise.all([
+        apiFetch<InventorySummaryResponse>(
+          '/inventory/summary',
+          token,
+        ),
+        apiFetch<RegisterResponse>(
+          '/inventory/register',
+          token,
+        ),
+        apiFetch<
+          | OrganizationLocation[]
+          | { data: OrganizationLocation[] }
+        >('/locations', token),
+      ]);
 
-          apiFetch<RegisterResponse>(
-            '/inventory/register',
-            token,
-          ),
+      if (!mounted) {
+        return;
+      }
 
-          apiFetch<
-            | OrganizationLocation[]
-            | { data: OrganizationLocation[] }
-          >('/locations', token),
-        ]);
-
-        const locationData = Array.isArray(locationResponse)
+      const locationData =
+        Array.isArray(locationResponse)
           ? locationResponse
           : locationResponse.data ?? [];
 
-        setSummary(summaryResponse);
-        setItems(registerResponse.data);
-        setLocations(locationData);
-      } catch (err) {
-        console.error(
-          'Unable to load inventory dashboard:',
-          err,
-        );
+      // Avoid state updates if the underlying data has not changed.
+      setSummary((current) =>
+        JSON.stringify(current) ===
+        JSON.stringify(summaryResponse)
+          ? current
+          : summaryResponse,
+      );
 
-        setError(
-          err instanceof Error
-            ? extractApiError(err.message)
-            : 'Unable to load inventory dashboard.',
-        );
-      } finally {
+      setItems((current) =>
+        JSON.stringify(current) ===
+        JSON.stringify(registerResponse.data)
+          ? current
+          : registerResponse.data,
+      );
+
+      setLocations((current) =>
+        JSON.stringify(current) ===
+        JSON.stringify(locationData)
+          ? current
+          : locationData,
+      );
+
+      setError('');
+    } catch (err) {
+      // Retain the existing data during a silent refresh failure.
+      if (!mounted || silent) {
+        return;
+      }
+
+      console.error(
+        'Unable to load inventory dashboard:',
+        err,
+      );
+
+      setError(
+        err instanceof Error
+          ? extractApiError(err.message)
+          : 'Unable to load inventory dashboard.',
+      );
+    } finally {
+      if (mounted && !silent) {
         setLoading(false);
       }
     }
+  }
 
-    loadDashboardData();
-  }, []);
+  const handleSilentRefresh = () => {
+    void loadDashboardData(true);
+  };
 
-  // --------------------------------------------------
-  // REORDER ITEMS
-  //
-  // An item appears once if at least one of its
-  // locations is BELOW the item's reorder level.
-  //
-  // Reorder level belongs to the item, not the
-  // individual location.
-  //
-  // Items with zero total stock are excluded here
-  // because they are shown in the out-of-stock list,
-  // so each item sits in exactly one card.
-  // --------------------------------------------------
+  void loadDashboardData(false);
 
-    // --------------------------------------------------
-  // REORDER ITEMS
-  //
-  // An item appears once if at least one of its
-  // locations is below the ITEM reorder level.
-  //
-  // Reorder level belongs to the item, not the
-  // individual location.
-  //
-  // Out-of-stock items are included, so they appear
-  // here as well as in the out-of-stock list.
-  // --------------------------------------------------
+  window.addEventListener(
+    'stockpile:refresh',
+    handleSilentRefresh,
+  );
 
-  const reorderItems = useMemo<ReorderItem[]>(() => {
-    return items
-      .map((item) => {
-        const lowLocations =
-          item.locationBreakdown.filter(
-            (location) =>
-              location.quantity < item.reorderLevel,
+  return () => {
+    mounted = false;
+
+    window.removeEventListener(
+      'stockpile:refresh',
+      handleSilentRefresh,
+    );
+
+    // Release the pause if this component unmounts.
+    window.dispatchEvent(
+      new CustomEvent('stockpile:dashboard-interaction', {
+        detail: {
+          source: 'inventory-stats',
+          active: false,
+        },
+      }),
+    );
+  };
+}, []);
+
+
+// --------------------------------------------------
+// REORDER ITEMS
+//
+// An item appears once if at least one location has
+// quantity at or below the item's reorder level.
+//
+// Reorder level belongs to the item, not the location.
+// Out-of-stock items may also appear in this alert.
+// --------------------------------------------------
+
+const reorderItems = useMemo<ReorderItem[]>(() => {
+  return items
+    .map((item) => {
+      const lowLocations =
+        item.locationBreakdown.filter(
+          (location) =>
+            location.quantity <= item.reorderLevel,
+        );
+
+      if (lowLocations.length === 0) {
+        return null;
+      }
+
+      const detailedLocations: ReorderLocation[] =
+        lowLocations.map((location) => {
+          const shortfall = Math.max(
+            item.reorderLevel - location.quantity,
+            0,
           );
 
-        if (lowLocations.length === 0) {
-          return null;
-        }
+          return {
+            locationId: location.locationId,
+            locationName: location.locationName,
+            quantity: location.quantity,
+            reorderLevel: item.reorderLevel,
+            shortfall,
+            suggestedPurchase: shortfall,
+          };
+        });
 
-        const detailedLocations: ReorderLocation[] =
-          lowLocations.map((location) => {
-            const shortfall = Math.max(
-              item.reorderLevel - location.quantity,
-              0,
-            );
+      return {
+        item,
+        locations: detailedLocations,
 
-            return {
-              locationId: location.locationId,
-              locationName: location.locationName,
-              quantity: location.quantity,
-              reorderLevel: item.reorderLevel,
-              shortfall,
+        totalShortfall: detailedLocations.reduce(
+          (total, location) =>
+            total + location.shortfall,
+          0,
+        ),
 
-              // Buy only what this location is missing
-              // to reach the item's reorder level.
-              suggestedPurchase: shortfall,
-            };
-          });
-
-        return {
-          item,
-          locations: detailedLocations,
-
-          totalShortfall: detailedLocations.reduce(
+        totalSuggestedPurchase:
+          detailedLocations.reduce(
             (total, location) =>
-              total + location.shortfall,
+              total + location.suggestedPurchase,
             0,
           ),
-
-          totalSuggestedPurchase:
-            detailedLocations.reduce(
-              (total, location) =>
-                total + location.suggestedPurchase,
-              0,
-            ),
-        };
-      })
-      .filter(
-        (entry): entry is ReorderItem => entry !== null,
-      );
-  }, [items]);
-
+      };
+    })
+    .filter(
+      (entry): entry is ReorderItem =>
+        entry !== null,
+    );
+}, [items]);
   // --------------------------------------------------
   // OUT OF STOCK ITEMS
   //
@@ -256,14 +303,33 @@ export default function InventoryStats() {
   function openReorderDetails() {
     requestIdRef.current += 1;
 
+    window.dispatchEvent(
+    new CustomEvent('stockpile:dashboard-interaction', {
+    detail: {
+      source: 'inventory-stats',
+      active: true,
+    },
+  }),
+  );
+
     setAlertType('reorder');
     setSelectedOutOfStockItem(null);
     setDetailLoading(false);
     setDetailError('');
   }
 
+
   function openOutOfStockDetails() {
     requestIdRef.current += 1;
+      
+    window.dispatchEvent(
+    new CustomEvent('stockpile:dashboard-interaction', {
+    detail: {
+      source: 'inventory-stats',
+      active: true,
+    },
+  }),
+  );
 
     setAlertType('outOfStock');
     setSelectedReorderItem(null);
@@ -274,6 +340,15 @@ export default function InventoryStats() {
   function closeDetails() {
     // Cancel any in-flight transaction request.
     requestIdRef.current += 1;
+
+    window.dispatchEvent(
+    new CustomEvent('stockpile:dashboard-interaction', {
+      detail: {
+        source: 'inventory-stats',
+        active: false,
+      },
+    }),
+  );
 
     setAlertType(null);
     setSelectedReorderItem(null);

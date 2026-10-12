@@ -10,12 +10,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+
 import {
-  FormEvent,
   useEffect,
   useMemo,
   useState,
 } from 'react';
+
+import type { FormEvent, ReactNode } from 'react';
+
 import { useRouter } from 'next/navigation';
 
 import InventorySidebar from '../../components/inventory/InventorySidebar';
@@ -84,7 +87,7 @@ function extractApiError(message: string): string {
       return parsed.error;
     }
   } catch {
-    // Keep original message.
+    // Keep the original message.
   }
 
   return message || 'Something went wrong.';
@@ -101,61 +104,41 @@ export default function LocationsPage() {
   const [locations, setLocations] =
     useState<Location[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [loadingLocations, setLoadingLocations] =
     useState(false);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [togglingStatus, setTogglingStatus] =
     useState<string | null>(null);
 
-  const [error, setError] =
-    useState('');
+  const [error, setError] = useState('');
 
-  const [formError, setFormError] =
-    useState('');
+  const [formError, setFormError] = useState('');
 
-  const [showForm, setShowForm] =
-    useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const [editingLocation, setEditingLocation] =
     useState<Location | null>(null);
 
-  const [name, setName] =
-    useState('');
+  const [name, setName] = useState('');
 
-  const [locationType, setLocationType] =
-    useState('');
+  const [locationType, setLocationType] = useState('');
 
-  const [parentId, setParentId] =
-    useState('');
+  const [parentId, setParentId] = useState('');
 
-  const [search, setSearch] =
-    useState('');
+  const [search, setSearch] = useState('');
 
   const [expanded, setExpanded] =
     useState<Record<string, boolean>>({});
 
   useAutoDismissMessage(error, setError);
 
-  useEffect(() => {
-  if (!error) {
-    return;
-  }
-
-      const timeoutId =
-        window.setTimeout(() => {
-          setError('');
-        }, 4000);
-
-      return () => {
-        window.clearTimeout(timeoutId);
-      };
-    }, [error]);
+  // --------------------------------------------------
+  // LOAD LOCATIONS
+  // --------------------------------------------------
 
   async function loadLocations() {
     try {
@@ -170,11 +153,9 @@ export default function LocationsPage() {
         return;
       }
 
-      const response =
-        await apiFetch<Location[] | { data: Location[] }>(
-          '/locations',
-          token,
-        );
+      const response = await apiFetch<
+        Location[] | { data: Location[] }
+      >('/locations', token);
 
       const data = Array.isArray(response)
         ? response
@@ -192,6 +173,10 @@ export default function LocationsPage() {
     }
   }
 
+  // --------------------------------------------------
+  // INITIAL PAGE LOAD
+  // --------------------------------------------------
+
   useEffect(() => {
     async function loadPage() {
       try {
@@ -206,11 +191,10 @@ export default function LocationsPage() {
           return;
         }
 
-        const me =
-          await apiFetch<CurrentUserResponse>(
-            '/auth/me',
-            token,
-          );
+        const me = await apiFetch<CurrentUserResponse>(
+          '/auth/me',
+          token,
+        );
 
         setOrganization(me.organization);
 
@@ -226,12 +210,15 @@ export default function LocationsPage() {
       }
     }
 
-    loadPage();
+    void loadPage();
   }, [router]);
 
+  // --------------------------------------------------
+  // FILTER AND ORGANIZE LOCATIONS
+  // --------------------------------------------------
+
   const filteredLocations = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
     if (!query) {
       return locations;
@@ -239,15 +226,9 @@ export default function LocationsPage() {
 
     return locations.filter(
       (location) =>
-        location.name
-          .toLowerCase()
-          .includes(query) ||
-        location.locationType
-          .toLowerCase()
-          .includes(query) ||
-        location.status
-          .toLowerCase()
-          .includes(query),
+        location.name.toLowerCase().includes(query) ||
+        location.locationType.toLowerCase().includes(query) ||
+        location.status.toLowerCase().includes(query),
     );
   }, [locations, search]);
 
@@ -267,27 +248,27 @@ export default function LocationsPage() {
     [locations],
   );
 
-  const childCount =
-    locations.length - topLevelCount;
+  const childCount = locations.length - topLevelCount;
 
   const activeCount = useMemo(
     () =>
       locations.filter(
-        (location) =>
-          location.status === 'active',
+        (location) => location.status === 'active',
       ).length,
     [locations],
   );
 
-  const inactiveCount =
-    locations.length - activeCount;
+  const inactiveCount = locations.length - activeCount;
 
-  const industryLabel =
-    organization?.industryType
-      ? organization.industryType
-          .replace(/_/g, ' ')
-          .toUpperCase()
-      : 'ORGANIZATION';
+  const industryLabel = organization?.industryType
+    ? organization.industryType
+        .replace(/_/g, ' ')
+        .toUpperCase()
+    : 'ORGANIZATION';
+
+  // --------------------------------------------------
+  // FORM HANDLERS
+  // --------------------------------------------------
 
   function resetForm() {
     setName('');
@@ -305,9 +286,7 @@ export default function LocationsPage() {
   function openEditForm(location: Location) {
     setEditingLocation(location);
     setName(location.name);
-    setLocationType(
-      location.locationType.toUpperCase(),
-    );
+    setLocationType(location.locationType.toUpperCase());
     setParentId(location.parentId ?? '');
     setFormError('');
     setShowForm(true);
@@ -327,23 +306,16 @@ export default function LocationsPage() {
   ) {
     event.preventDefault();
 
-    const trimmedName =
-      name.trim();
-
-    const trimmedType =
-      locationType.trim();
+    const trimmedName = name.trim();
+    const trimmedType = locationType.trim();
 
     if (!trimmedName) {
-      setFormError(
-        'Enter a location name.',
-      );
+      setFormError('Enter a location name.');
       return;
     }
 
     if (!trimmedType) {
-      setFormError(
-        'Select a location type.',
-      );
+      setFormError('Select a location type.');
       return;
     }
 
@@ -352,9 +324,7 @@ export default function LocationsPage() {
       setFormError('');
 
       const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
+        window.localStorage.getItem('accessToken');
 
       if (!token) {
         router.push('/login');
@@ -363,11 +333,8 @@ export default function LocationsPage() {
 
       const body = {
         name: trimmedName,
-        locationType:
-          trimmedType.toLowerCase(),
-        ...(parentId
-          ? { parentId }
-          : {}),
+        locationType: trimmedType.toLowerCase(),
+        ...(parentId ? { parentId } : {}),
       };
 
       if (editingLocation) {
@@ -380,14 +347,10 @@ export default function LocationsPage() {
           },
         );
       } else {
-        await apiFetch(
-          '/locations',
-          token,
-          {
-            method: 'POST',
-            body: JSON.stringify(body),
-          },
-        );
+        await apiFetch('/locations', token, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
       }
 
       await loadLocations();
@@ -405,24 +368,22 @@ export default function LocationsPage() {
     }
   }
 
+  // --------------------------------------------------
+  // ACTIVATE / DEACTIVATE LOCATION
+  // --------------------------------------------------
+
   async function toggleLocationStatus(
     location: Location,
   ) {
-    const isActive =
-      location.status === 'active';
+    const isActive = location.status === 'active';
 
-    const nextStatus = isActive
-      ? 'inactive'
-      : 'active';
+    const nextStatus = isActive ? 'inactive' : 'active';
 
-    const actionText = isActive
-      ? 'deactivate'
-      : 'activate';
+    const actionText = isActive ? 'deactivate' : 'activate';
 
-    const confirmed =
-      window.confirm(
-        `${actionText.charAt(0).toUpperCase()}${actionText.slice(1)} "${location.name}"?`,
-      );
+    const confirmed = window.confirm(
+      `${actionText.charAt(0).toUpperCase()}${actionText.slice(1)} "${location.name}"?`,
+    );
 
     if (!confirmed) {
       return;
@@ -433,9 +394,7 @@ export default function LocationsPage() {
       setTogglingStatus(location.id);
 
       const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
+        window.localStorage.getItem('accessToken');
 
       if (!token) {
         router.push('/login');
@@ -465,13 +424,14 @@ export default function LocationsPage() {
     }
   }
 
-  async function deleteLocation(
-    location: Location,
-  ) {
-    const confirmed =
-      window.confirm(
-        `Delete "${location.name}"? This may fail if the location is already being used.`,
-      );
+  // --------------------------------------------------
+  // DELETE LOCATION
+  // --------------------------------------------------
+
+  async function deleteLocation(location: Location) {
+    const confirmed = window.confirm(
+      `Delete "${location.name}"? This may fail if the location is already being used.`,
+    );
 
     if (!confirmed) {
       return;
@@ -481,9 +441,7 @@ export default function LocationsPage() {
       setError('');
 
       const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
+        window.localStorage.getItem('accessToken');
 
       if (!token) {
         router.push('/login');
@@ -508,68 +466,52 @@ export default function LocationsPage() {
     }
   }
 
-  function toggleExpanded(
-    locationId: string,
-  ) {
+  // --------------------------------------------------
+  // LOCATION HIERARCHY
+  // --------------------------------------------------
+
+  function toggleExpanded(locationId: string) {
     setExpanded((current) => ({
       ...current,
-      [locationId]:
-        !current[locationId],
+      [locationId]: !current[locationId],
     }));
   }
 
-  function getChildren(
-    locationId: string,
-  ) {
+  function getChildren(locationId: string) {
     return filteredLocations.filter(
-      (location) =>
-        location.parentId ===
-        locationId,
+      (location) => location.parentId === locationId,
     );
   }
 
   function renderLocation(
     location: Location,
     level = 0,
-  ): React.ReactNode {
-    const children =
-      getChildren(location.id);
-
-    const hasChildren =
-      children.length > 0;
-
-    const isExpanded =
-      expanded[location.id] ?? true;
-
-    const isActive =
-      location.status === 'active';
-
-    const isToggling =
-      togglingStatus === location.id;
+  ): ReactNode {
+    const children = getChildren(location.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = expanded[location.id] ?? true;
+    const isActive = location.status === 'active';
+    const isToggling = togglingStatus === location.id;
 
     return (
       <div
         key={location.id}
-        className="border-b border-dashed border-[#b7a87e] last:border-b-0"
+        className="border-b border-[var(--border)] last:border-b-0"
       >
         <div
-          className="flex items-center gap-3 px-4 py-3 hover:bg-[#eae2ce]"
+          className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--surface-soft)]"
           style={{
-            paddingLeft:
-              `${16 + level * 26}px`,
+            paddingLeft: `${16 + level * 26}px`,
           }}
         >
           <button
             type="button"
             onClick={() =>
-              hasChildren &&
-              toggleExpanded(
-                location.id,
-              )
+              hasChildren && toggleExpanded(location.id)
             }
             className={`flex h-5 w-5 shrink-0 items-center justify-center ${
               hasChildren
-                ? 'text-[#2e4057]'
+                ? 'text-[var(--navy)]'
                 : 'text-transparent'
             }`}
             aria-label={
@@ -585,51 +527,44 @@ export default function LocationsPage() {
                 size={13}
                 strokeWidth={1.7}
                 className={
-                  isExpanded
-                    ? ''
-                    : '-rotate-90'
+                  isExpanded ? '' : '-rotate-90'
                 }
               />
             )}
           </button>
 
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-[#2e4057] text-[#2e4057]">
-            <MapPin
-              size={14}
-              strokeWidth={1.6}
-            />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-[var(--border)] bg-[var(--surface-soft)] text-[var(--navy)]">
+            <MapPin size={14} strokeWidth={1.6} />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[10px]">
+              <span className="font-sans text-[13px] font-medium text-[var(--text)]">
                 {location.name}
               </span>
 
-              <span className="border border-[#b7a87e] px-1.5 py-0.5 font-mono text-[6px] tracking-widest text-[#5b5346]">
+              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-1 font-mono text-[9px] tracking-[0.06em] text-[var(--text-muted)]">
                 {location.locationType.toUpperCase()}
               </span>
 
               {location.parentId && (
-                <span className="border border-[#b7a87e] px-1.5 py-0.5 font-mono text-[6px] tracking-widest text-[#5b5346]">
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-1 font-mono text-[9px] tracking-[0.06em] text-[var(--text-muted)]">
                   SUB-LOCATION
                 </span>
               )}
 
               <span
-                className={`px-1.5 py-0.5 font-mono text-[6px] tracking-widest ${
+                className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] tracking-widest ${
                   isActive
-                    ? 'border border-[#2e4057] bg-[#2e4057] text-[#f5f0e3]'
-                    : 'border border-[#a63a2e] bg-[#a63a2e] text-[#f5f0e3]'
+                    ? 'border-[var(--success)] bg-[var(--success-soft)] text-[var(--success)]'
+                    : 'border-[var(--danger)] bg-[var(--danger-soft)] text-[var(--danger)]'
                 }`}
               >
-                {isActive
-                  ? 'ACTIVE'
-                  : 'INACTIVE'}
+                {isActive ? 'ACTIVE' : 'INACTIVE'}
               </span>
             </div>
 
-            <div className="mt-0.5 font-mono text-[7px] text-[#5b5346]">
+            <div className="mt-0.5 font-mono text-[9px] text-[var(--text-muted)]">
               {children.length > 0
                 ? `${children.length} ${
                     children.length === 1
@@ -645,16 +580,12 @@ export default function LocationsPage() {
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() =>
-                toggleLocationStatus(
-                  location,
-                )
-              }
+              onClick={() => toggleLocationStatus(location)}
               disabled={isToggling}
-              className={`border px-2 py-1.5 font-mono text-[6px] tracking-widest disabled:cursor-wait disabled:opacity-50 ${
+              className={`min-h-[36px] rounded-[8px] border px-2.5 py-1.5 font-sans text-[10px] font-semibold tracking-[0.04em] transition-colors disabled:cursor-wait disabled:opacity-50 ${
                 isActive
-                  ? 'border-[#a63a2e] text-[#a63a2e] hover:bg-[#a63a2e] hover:text-[#f5f0e3]'
-                  : 'border-[#2e4057] bg-[#2e4057] text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620]'
+                  ? 'border-[var(--danger)] text-[var(--danger)] hover:bg-[var(--danger-soft)]'
+                  : 'border-[var(--success)] bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success)] hover:text-white'
               }`}
               title={
                 isActive
@@ -671,302 +602,335 @@ export default function LocationsPage() {
 
             <button
               type="button"
-              onClick={() =>
-                openEditForm(
-                  location,
-                )
-              }
-              className="border border-[#b7a87e] p-1.5 text-[#5b5346] hover:border-[#2e4057] hover:text-[#2e4057]"
+              onClick={() => openEditForm(location)}
+              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition-colors hover:border-[var(--navy)] hover:bg-[var(--surface-soft)] hover:text-[var(--navy)]"
               title="Edit location"
+              aria-label={`Edit ${location.name}`}
             >
-              <Edit3
-                size={12}
-                strokeWidth={1.6}
-              />
+              <Edit3 size={14} strokeWidth={1.6} />
             </button>
 
             <button
               type="button"
-              onClick={() =>
-                deleteLocation(
-                  location,
-                )
-              }
-              className="border border-[#b7a87e] p-1.5 text-[#a63a2e] hover:border-[#a63a2e]"
+              onClick={() => deleteLocation(location)}
+              className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--danger)] transition-colors hover:border-[var(--danger)] hover:bg-[var(--danger-soft)]"
               title="Delete location"
+              aria-label={`Delete ${location.name}`}
             >
-              <Trash2
-                size={12}
-                strokeWidth={1.6}
-              />
+              <Trash2 size={14} strokeWidth={1.6} />
             </button>
           </div>
         </div>
 
-        {hasChildren &&
-          isExpanded && (
-            <div>
-              {children.map(
-                (child) =>
-                  renderLocation(
-                    child,
-                    level + 1,
-                  ),
-              )}
-            </div>
-          )}
+        {hasChildren && isExpanded && (
+          <div>
+            {children.map((child) =>
+              renderLocation(child, level + 1),
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
+  // --------------------------------------------------
+  // PAGE
+  // --------------------------------------------------
+
   return (
-    <main className="min-h-screen bg-[#ddd0b8] text-[#2b2620]">
+    <main className="min-h-screen bg-[var(--background)] text-[var(--text)]">
       <InventorySidebar
         collapsed={collapsed}
         onToggle={() =>
-          setCollapsed(
-            (current) => !current,
-          )
+          setCollapsed((current) => !current)
         }
       />
 
       <div
-        className={`min-h-screen ${
+        className={`min-h-screen transition-[padding] duration-200 ${
           collapsed
             ? 'md:pl-[68px]'
             : 'md:pl-[205px]'
         }`}
       >
-        <div className="p-3 md:p-5">
-          <div className="mx-auto max-w-[1250px]">
-            <header className="border border-[#b7a87e] bg-[#f5f0e3] px-5 py-4 shadow-[0_2px_0_#b7a87e,0_8px_20px_rgba(43,38,32,0.12)]">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="font-mono text-[8px] tracking-[0.18em] text-[#5b5346]">
-                    INVENTORY MANAGEMENT SYSTEM
+        <div className="px-4 py-5 md:px-7 md:py-7">
+          <div className="mx-auto max-w-[1500px]">
+
+            {/* PAGE HEADER */}
+
+            <header className="mb-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span
+                      className="stockpile-status-dot"
+                      aria-hidden="true"
+                    />
+
+                    <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--accent)]">
+                      Organization locations
+                    </span>
                   </div>
 
-                  <div className="mt-1 font-mono text-[19px] tracking-[0.05em]">
-                    INVENTORY LEDGER
-                  </div>
+                  <h1 className="font-sans text-[38px] font-semibold leading-none tracking-[-0.045em] md:text-[46px]">
+                    Locations
+                  </h1>
+
+                  <p className="mt-3 max-w-[680px] text-[13px] leading-6 text-[var(--text-muted)]">
+                    Manage the physical locations where your
+                    organization stores or manages inventory.
+                  </p>
                 </div>
 
-                <div className="hidden border-2 border-[#a63a2e] px-2.5 py-1 font-mono text-[7px] tracking-widest text-[#a63a2e] sm:block">
-                  LOCATION REGISTER · {industryLabel}
+                <div className="flex flex-col items-start gap-2 lg:items-end">
+                  <button
+                    type="button"
+                    onClick={openCreateForm}
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] border border-[var(--navy)] bg-[var(--navy)] px-4 py-2.5 font-sans text-[11px] font-semibold tracking-[0.04em] text-white transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)]"
+                  >
+                    <Plus size={14} strokeWidth={1.7} />
+                    ADD LOCATION
+                  </button>
+
+                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--text-soft)]">
+                    {industryLabel} · LOCATION REGISTER
+                  </span>
                 </div>
               </div>
             </header>
 
-            <section className="relative mt-4 border border-[#b7a87e] bg-[#f5f0e3] p-5 shadow-[0_2px_0_#b7a87e,0_8px_20px_rgba(43,38,32,0.12)] md:p-7">
-              <div className="pointer-events-none absolute inset-2 border border-dashed border-[#2b2620]/15" />
+            {/* LOCATION SNAPSHOT */}
 
-              <div className="relative">
-                <div className="flex flex-col gap-4 border-b border-dashed border-[#b7a87e] pb-5 md:flex-row md:items-end md:justify-between">
-                  <div>
-                    <div className="font-mono text-[8px] tracking-widest text-[#a63a2e]">
-                      LOCATION REGISTER
-                    </div>
-
-                    <h1 className="mt-1 font-mono text-[28px] leading-tight">
-                      Locations
-                    </h1>
-
-                    <p className="mt-2 max-w-[700px] font-mono text-[9px] leading-5 text-[#5b5346]">
-                      Manage the physical locations where your organization stores or manages inventory.
-                    </p>
+            <section className="mb-8">
+              <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[var(--text-soft)]">
+                    Location snapshot
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={openCreateForm}
-                    className="flex items-center justify-center gap-2 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620]"
-                  >
-                    <Plus
-                      size={14}
-                      strokeWidth={1.7}
+                  <h2 className="mt-1 font-sans text-[19px] font-semibold tracking-[-0.02em]">
+                    Organization overview
+                  </h2>
+                </div>
+
+                <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--text-soft)]">
+                  Live database
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                {/* Organization card */}
+
+                <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_3px_12px_rgba(23,23,23,0.03)]">
+                  <div className="flex items-center gap-2 font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    <Building2
+                      size={13}
+                      strokeWidth={1.6}
                     />
-                    ADD LOCATION
-                  </button>
-                </div>
-
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <div className="border border-[#b7a87e] p-4">
-                    <div className="flex items-center gap-2 font-mono text-[7px] tracking-widest text-[#5b5346]">
-                      <Building2
-                        size={13}
-                        strokeWidth={1.6}
-                      />
-                      CURRENT ORGANIZATION
-                    </div>
-
-                    <div className="mt-1 font-mono text-[14px]">
-                      {loading
-                        ? 'LOADING...'
-                        : organization?.name ??
-                          '—'}
-                    </div>
+                    Current organization
                   </div>
 
-                  <div className="border border-[#2e4057] bg-[#2e4057] p-4 text-[#f5f0e3]">
-                    <div className="font-mono text-[7px] tracking-widest text-[#ddd0b8]">
-                      TOTAL LOCATIONS
-                    </div>
-
-                    <div className="mt-1 font-mono text-[19px] text-[#c68a2e]">
-                      {locations.length}
-                    </div>
-
-                    <div className="mt-2 font-mono text-[6px] tracking-widest text-[#ddd0b8]">
-                      {activeCount} ACTIVE · {inactiveCount} INACTIVE
-                    </div>
-                  </div>
-
-                  <div className="border border-[#b7a87e] p-4">
-                    <div className="font-mono text-[7px] tracking-widest text-[#5b5346]">
-                      STRUCTURE
-                    </div>
-
-                    <div className="mt-1 font-mono text-[11px]">
-                      {topLevelCount} TOP LEVEL ·{' '}
-                      {childCount} CHILD
-                    </div>
+                  <div className="mt-3 font-sans text-[18px] font-semibold tracking-[-0.02em] text-[var(--text)]">
+                    {loading
+                      ? 'Loading...'
+                      : organization?.name ?? '—'}
                   </div>
                 </div>
 
-                {error && (
-                  <div className="mt-5 border border-[#a63a2e] bg-[#a63a2e]/5 px-4 py-3">
-                    <div className="font-mono text-[8px] text-[#a63a2e]">
-                      {error}
-                    </div>
-                  </div>
-                )}
+                {/* Total locations card */}
 
-                <div className="mt-6 flex flex-col gap-3 border border-[#b7a87e] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_3px_12px_rgba(23,23,23,0.03)]">
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Total locations
+                  </div>
+
+                  <div className="mt-3 font-sans text-[32px] font-semibold leading-none tracking-[-0.035em] text-[var(--navy)]">
+                    {locations.length}
+                  </div>
+
+                  <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--text-soft)]">
+                    {activeCount} active · {inactiveCount} inactive
+                  </div>
+                </div>
+
+                {/* Structure card */}
+
+                <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_3px_12px_rgba(23,23,23,0.03)]">
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Structure
+                  </div>
+
+                  <div className="mt-3 font-sans text-[18px] font-semibold leading-tight tracking-[-0.02em] text-[var(--text)]">
+                    {topLevelCount} top level · {childCount} child
+                  </div>
+
+                  <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--text-soft)]">
+                    Hierarchical locations
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mt-5 rounded-[12px] border border-[var(--danger)]/25 bg-[var(--danger-soft)] px-4 py-3">
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--danger)]">
+                    Location error
+                  </div>
+
+                  <div className="mt-1.5 text-[12px] leading-5 text-[var(--danger)]">
+                    {error}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* LOCATION REGISTER */}
+
+            <section className="mb-8 overflow-hidden rounded-[16px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_6px_18px_rgba(23,23,23,0.045)]">
+              <div className="px-5 py-5 md:px-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <div className="font-mono text-[7px] tracking-widest text-[#5b5346]">
-                      LOCATION REGISTER
+                    <div className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[var(--accent)]">
+                      Location register
                     </div>
 
-                    <div className="mt-1 font-mono text-[11px]">
-                      {filteredLocations.length}{' '}
-                      {filteredLocations.length === 1
-                        ? 'RECORD'
-                        : 'RECORDS'}
-                    </div>
+                    <h2 className="mt-1 font-sans text-[23px] font-semibold tracking-[-0.025em] text-[var(--text)]">
+                      Location hierarchy
+                    </h2>
+
+                    <p className="mt-1.5 max-w-[650px] text-[12px] leading-5 text-[var(--text-muted)]">
+                      Browse your stores, warehouses, departments
+                      and other inventory locations.
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Search
-                      size={13}
-                      strokeWidth={1.6}
-                      className="text-[#5b5346]"
+                      size={15}
+                      strokeWidth={1.7}
+                      className="shrink-0 text-[var(--text-muted)]"
                     />
 
                     <input
                       value={search}
                       onChange={(event) =>
-                        setSearch(
-                          event.target.value,
-                        )
+                        setSearch(event.target.value)
                       }
-                      placeholder="SEARCH LOCATIONS..."
-                      className="w-full border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[8px] outline-none placeholder:text-[#8a806f] sm:w-[280px]"
+                      placeholder="Search locations..."
+                      aria-label="Search locations"
+                      className="min-h-[44px] w-full rounded-[9px] border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 font-sans text-[12px] text-[var(--text)] outline-none transition-colors placeholder:text-[var(--text-soft)] focus:border-[var(--accent)] focus:bg-[var(--surface)] sm:w-[260px]"
                     />
                   </div>
                 </div>
 
-                <div className="mt-4 overflow-hidden border border-[#b7a87e]">
-                  {loading ||
-                  loadingLocations ? (
-                    <div className="px-4 py-12 text-center font-mono text-[9px] text-[#5b5346]">
-                      LOADING LOCATION REGISTER...
+                <div className="mt-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-soft)]">
+                    Register results
+                  </div>
+
+                  <div className="font-sans text-[12px] font-medium text-[var(--text)]">
+                    {filteredLocations.length}{' '}
+                    {filteredLocations.length === 1
+                      ? 'record'
+                      : 'records'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--border)]">
+                {loading || loadingLocations ? (
+                  <div className="px-4 py-12 text-center text-[12px] text-[var(--text-muted)]">
+                    Loading location register...
+                  </div>
+                ) : rootLocations.length === 0 ? (
+                  <div className="px-5 py-12 text-center">
+                    <MapPin
+                      size={30}
+                      strokeWidth={1.4}
+                      className="mx-auto text-[var(--text-soft)]"
+                    />
+
+                    <div className="mt-3 font-sans text-[13px] font-medium text-[var(--text)]">
+                      {search
+                        ? 'No matching locations found.'
+                        : 'No locations created yet.'}
                     </div>
-                  ) : rootLocations.length ===
-                    0 ? (
-                    <div className="px-5 py-12 text-center">
-                      <MapPin
-                        size={30}
-                        strokeWidth={1.4}
-                        className="mx-auto text-[#b7a87e]"
-                      />
 
-                      <div className="mt-3 font-mono text-[10px]">
-                        {search
-                          ? 'No matching locations found.'
-                          : 'No locations created yet.'}
-                      </div>
+                    {!search && (
+                      <>
+                        <div className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">
+                          Create your first store, warehouse,
+                          pharmacy or department.
+                        </div>
 
-                      {!search && (
-                        <>
-                          <div className="mt-1 font-mono text-[8px] text-[#5b5346]">
-                            Create your first store,
-                            warehouse, pharmacy or
-                            department.
-                          </div>
+                        <button
+                          type="button"
+                          onClick={openCreateForm}
+                          className="mt-4 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[9px] border border-[var(--navy)] bg-[var(--navy)] px-4 py-2.5 font-sans text-[11px] font-semibold tracking-[0.04em] text-white transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)]"
+                        >
+                          <Plus size={14} />
+                          CREATE FIRST LOCATION
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  rootLocations.map((location) =>
+                    renderLocation(location),
+                  )
+                )}
+              </div>
+            </section>
 
-                          <button
-                            type="button"
-                            onClick={
-                              openCreateForm
-                            }
-                            className="mt-4 border border-[#2b2620] px-4 py-2 font-mono text-[8px] tracking-widest hover:bg-[#2e4057] hover:text-[#f5f0e3]"
-                          >
-                            CREATE FIRST LOCATION
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    rootLocations.map(
-                      (location) =>
-                        renderLocation(
-                          location,
-                        ),
-                    )
-                  )}
+            {/* LOCATION INFORMATION */}
+
+            <section className="mb-8">
+              <div className="mb-4">
+                <div className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[var(--text-soft)]">
+                  Reference
                 </div>
 
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  <div className="border border-dashed border-[#b7a87e] p-4">
-                    <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
-                      LOCATION HIERARCHY
-                    </div>
+                <h2 className="mt-1 font-sans text-[19px] font-semibold tracking-[-0.02em]">
+                  Managing locations
+                </h2>
+              </div>
 
-                    <div className="mt-3 font-mono text-[8px] leading-5 text-[#5b5346]">
-                      A parent location can contain
-                      smaller stock locations. Use
-                      this structure to mirror the
-                      physical organization of your
-                      stores and departments.
-                    </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface-soft)] p-5">
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Location hierarchy
                   </div>
 
-                  <div className="border border-dashed border-[#b7a87e] p-4">
-                    <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
-                      LOCATION STATUS
-                    </div>
+                  <p className="mt-3 text-[12px] leading-6 text-[var(--text-muted)]">
+                    A parent location can contain smaller stock
+                    locations. Use this structure to mirror the
+                    physical organization of your stores and
+                    departments.
+                  </p>
+                </div>
 
-                    <div className="mt-3 font-mono text-[8px] leading-5 text-[#5b5346]">
-                      Inactive locations remain visible
-                      and preserve their existing
-                      inventory assignments. New stock
-                      operations are blocked until the
-                      location is activated.
-                    </div>
+                <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface-soft)] p-5">
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Location status
                   </div>
+
+                  <p className="mt-3 text-[12px] leading-6 text-[var(--text-muted)]">
+                    Inactive locations remain visible and preserve
+                    their existing inventory assignments. New stock
+                    operations are blocked until the location is
+                    activated.
+                  </p>
                 </div>
               </div>
             </section>
 
-            <footer className="mt-3 border-t border-dashed border-[#b7a87e] pt-2 font-mono text-[7px] text-[#5b5346]">
-              <div className="flex justify-between gap-4">
-                <span>
-                  INVENTORY LEDGER · LOCATIONS
-                </span>
+            {/* FOOTER */}
+
+            <footer className="mt-7 border-t border-[var(--border)] pt-4">
+              <div className="flex flex-col gap-1 font-mono text-[8px] uppercase tracking-[0.1em] text-[var(--text-soft)] sm:flex-row sm:items-center sm:justify-between">
+                <span>Stockpile · Locations</span>
 
                 <span>
-                  {organization?.name ??
-                    'ORGANIZATION'}
+                  {organization?.name ?? 'Organization'}
                 </span>
               </div>
             </footer>
@@ -974,34 +938,37 @@ export default function LocationsPage() {
         </div>
       </div>
 
+      {/* CREATE / EDIT LOCATION MODAL */}
+
       {showForm && (
         <>
           <button
             type="button"
             aria-label="Close location form"
             onClick={closeForm}
-            className="fixed inset-0 z-[60] bg-[#2b2620]/45"
+            className="fixed inset-0 z-[60] bg-[var(--text)]/45 backdrop-blur-[2px]"
           />
 
           <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4">
             <form
               onSubmit={handleSubmit}
-              className="my-auto w-full max-w-[500px] border border-[#2b2620] bg-[#f5f0e3] p-5 shadow-[8px_10px_0_rgba(43,38,32,0.18)]"
+              className="my-auto w-full max-w-[500px] rounded-[16px] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[0_20px_50px_rgba(23,23,23,0.16)]"
             >
-              <div className="flex items-start justify-between border-b border-dashed border-[#b7a87e] pb-4">
+              <div className="flex items-start justify-between border-b border-[var(--border)] pb-4">
                 <div>
-                  <div className="font-mono text-[7px] tracking-widest text-[#a63a2e]">
-                    LOCATION REGISTER
+                  <div className="font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[var(--accent)]">
+                    Location register
                   </div>
 
-                  <h3 className="mt-1 font-mono text-[20px]">
+                  <h3 className="mt-1 font-sans text-[22px] font-semibold tracking-[-0.025em] text-[var(--text)]">
                     {editingLocation
-                      ? 'EDIT LOCATION'
-                      : 'ADD LOCATION'}
+                      ? 'Edit location'
+                      : 'Add location'}
                   </h3>
 
-                  <p className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                    Define where inventory is physically stored or managed.
+                  <p className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">
+                    Define where inventory is physically stored
+                    or managed.
                   </p>
                 </div>
 
@@ -1009,135 +976,127 @@ export default function LocationsPage() {
                   type="button"
                   onClick={closeForm}
                   aria-label="Close"
-                  className="text-[#5b5346] hover:text-[#2b2620]"
+                  className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)]"
                 >
-                  <X
-                    size={18}
-                    strokeWidth={1.7}
-                  />
+                  <X size={18} strokeWidth={1.7} />
                 </button>
               </div>
 
               {formError && (
-                <div className="mt-4 border border-[#a63a2e] bg-[#a63a2e]/5 px-3 py-2.5 font-mono text-[8px] leading-4 text-[#a63a2e]">
+                <div className="mt-4 rounded-[10px] border border-[var(--danger)]/25 bg-[var(--danger-soft)] px-3 py-2.5 text-[12px] leading-5 text-[var(--danger)]">
                   {formError}
                 </div>
               )}
 
               <div className="mt-5">
-                <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  LOCATION NAME
+                <label
+                  htmlFor="location-name"
+                  className="mb-2 block font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"
+                >
+                  Location name
                 </label>
 
                 <input
+                  id="location-name"
                   type="text"
                   value={name}
                   onChange={(event) =>
-                    setName(
-                      event.target.value,
-                    )
+                    setName(event.target.value)
                   }
                   maxLength={100}
                   placeholder="e.g. Central Medical Store"
-                  className="w-full border-0 border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[11px] outline-none"
+                  className="min-h-[44px] w-full rounded-[9px] border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 font-sans text-[12px] text-[var(--text)] outline-none transition-colors placeholder:text-[var(--text-soft)] focus:border-[var(--accent)] focus:bg-[var(--surface)]"
                   autoFocus
                   required
                 />
               </div>
 
               <div className="mt-5">
-                <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  LOCATION TYPE
+                <label
+                  htmlFor="location-type"
+                  className="mb-2 block font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"
+                >
+                  Location type
                 </label>
 
                 <select
+                  id="location-type"
                   value={locationType}
                   onChange={(event) =>
-                    setLocationType(
-                      event.target.value,
-                    )
+                    setLocationType(event.target.value)
                   }
-                  className="w-full border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[10px] outline-none"
+                  className="min-h-[44px] w-full rounded-[9px] border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 font-sans text-[12px] text-[var(--text)] outline-none transition-colors focus:border-[var(--accent)] focus:bg-[var(--surface)]"
                   required
                 >
-                  <option value="">
-                    SELECT TYPE
-                  </option>
+                  <option value="">Select type</option>
 
-                  {LOCATION_TYPES.map(
-                    (type) => (
-                      <option
-                        key={type}
-                        value={type}
-                      >
-                        {type}
-                      </option>
-                    ),
-                  )}
+                  {LOCATION_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="mt-5">
-                <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  PARENT LOCATION
+                <label
+                  htmlFor="parent-location"
+                  className="mb-2 block font-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"
+                >
+                  Parent location
                 </label>
 
                 <select
+                  id="parent-location"
                   value={parentId}
                   onChange={(event) =>
-                    setParentId(
-                      event.target.value,
-                    )
+                    setParentId(event.target.value)
                   }
-                  className="w-full border-b border-[#2b2620] bg-transparent px-1 py-2 font-mono text-[10px] outline-none"
+                  className="min-h-[44px] w-full rounded-[9px] border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 font-sans text-[12px] text-[var(--text)] outline-none transition-colors focus:border-[var(--accent)] focus:bg-[var(--surface)]"
                 >
-                  <option value="">
-                    NONE · TOP LEVEL
-                  </option>
+                  <option value="">None · top level</option>
 
                   {locations
                     .filter(
                       (location) =>
-                        location.id !==
-                        editingLocation?.id,
+                        location.id !== editingLocation?.id,
                     )
-                    .map(
-                      (location) => (
-                        <option
-                          key={location.id}
-                          value={location.id}
-                        >
-                          {location.name}
-                        </option>
-                      ),
-                    )}
+                    .map((location) => (
+                      <option
+                        key={location.id}
+                        value={location.id}
+                      >
+                        {location.name}
+                      </option>
+                    ))}
                 </select>
 
-                <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                  Choose a parent when this location sits inside another location.
+                <div className="mt-2 text-[12px] leading-5 text-[var(--text-muted)]">
+                  Choose a parent when this location sits inside
+                  another location.
                 </div>
               </div>
 
-              <div className="mt-6 flex gap-2 border-t border-dashed border-[#b7a87e] pt-5">
+              <div className="mt-6 flex gap-2 border-t border-[var(--border)] pt-5">
                 <button
                   type="button"
                   onClick={closeForm}
                   disabled={saving}
-                  className="flex-1 border border-[#2b2620] px-4 py-2.5 font-mono text-[8px] tracking-widest disabled:opacity-40"
+                  className="min-h-[44px] flex-1 rounded-[9px] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 font-sans text-[11px] font-semibold tracking-[0.04em] transition-colors hover:bg-[var(--surface-soft)] disabled:opacity-40"
                 >
-                  CANCEL
+                  Cancel
                 </button>
 
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 border-2 border-[#2e4057] bg-[#2e4057] px-4 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620] disabled:opacity-50"
+                  className="min-h-[44px] flex-1 rounded-[9px] border border-[var(--navy)] bg-[var(--navy)] px-4 py-2.5 font-sans text-[11px] font-semibold tracking-[0.04em] text-white transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)] disabled:cursor-wait disabled:opacity-50"
                 >
                   {saving
-                    ? 'SAVING...'
+                    ? 'Saving...'
                     : editingLocation
-                      ? 'UPDATE LOCATION'
-                      : 'CREATE LOCATION'}
+                      ? 'Update location'
+                      : 'Create location'}
                 </button>
               </div>
             </form>

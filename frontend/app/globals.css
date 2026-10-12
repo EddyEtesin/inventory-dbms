@@ -207,3 +207,36 @@ textarea:focus-visible {
 .stockpile-accent {
   color: var(--accent);
 }
+
+/* Inventory command centre status indicator */
+.stockpile-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: var(--danger);
+  animation: stockpile-status-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes stockpile-status-blink {
+  0%,
+  100% {
+    background-color: var(--danger);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--danger) 35%, transparent);
+  }
+
+  50% {
+    background-color: var(--success);
+    box-shadow: 0 0 0 4px
+      color-mix(in srgb, var(--success) 15%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stockpile-status-dot {
+    animation: none;
+    background-color: var(--success);
+  }
+}

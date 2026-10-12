@@ -116,6 +116,19 @@ export default function QuickActions({
     };
   }, [action]);
 
+  useEffect(() => {
+  return () => {
+    window.dispatchEvent(
+      new CustomEvent('stockpile:dashboard-interaction', {
+        detail: {
+          source: 'quick-actions',
+          active: false,
+        },
+      }),
+    );
+  };
+}, []);
+
   function openAction(
     nextAction:
       | 'receive'
@@ -769,3 +782,4 @@ function extractApiError(
 
   return message;
 }
+

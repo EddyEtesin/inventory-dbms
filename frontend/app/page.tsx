@@ -9,6 +9,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -89,6 +90,14 @@ export default function DashboardPage() {
   const [movementError, setMovementError] =
     useState('');
 
+  const refreshInProgressRef = useRef(false);
+  const pendingSilentRefreshRef = useRef(false);
+  const interactionSourcesRef = useRef<Set<string>>(
+    new Set(),
+  );
+  const silentRefreshRef =
+    useRef<(() => Promise<void>) | null>(null);
+
   /*
    * --------------------------------------------------
    * SIDEBAR
@@ -127,216 +136,311 @@ export default function DashboardPage() {
    * --------------------------------------------------
    */
 
-  async function loadDashboardData(): Promise<boolean> {
-    try {
+async function loadDashboardData(
+  silent = false,
+  respectPause = false,
+): Promise<boolean> {
+  try {
+    if (!silent) {
       setDashboardLoading(true);
       setDashboardError('');
+    }
 
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
+    const token =
+      window.localStorage.getItem('accessToken');
 
-      if (!token) {
-        throw new Error(
-          'Please sign in first.',
-        );
-      }
+    if (!token) {
+      throw new Error('Please sign in first.');
+    }
 
-      const [
-        registerResponse,
-        locationResponse,
-      ] = await Promise.all([
+    const [registerResponse, locationResponse] =
+      await Promise.all([
         apiFetch<RegisterResponse>(
           '/inventory/register',
           token,
         ),
-
         apiFetch<
           OrganizationLocation[] | {
             data: OrganizationLocation[];
           }
-        >(
-          '/locations',
-          token,
-        ),
+        >('/locations', token),
       ]);
 
-      setItems(
-        registerResponse.data,
-      );
+    // Discard a background response if the user opened
+    // a modal while the request was in flight.
+    if (
+      silent &&
+      respectPause &&
+      interactionSourcesRef.current.size > 0
+    ) {
+      return false;
+    }
 
-      const locations =
-        Array.isArray(
-          locationResponse,
-        )
-          ? locationResponse
-          : Array.isArray(
-              locationResponse.data,
-            )
-            ? locationResponse.data
-            : [];
+    const locations = Array.isArray(locationResponse)
+      ? locationResponse
+      : Array.isArray(locationResponse.data)
+        ? locationResponse.data
+        : [];
 
-      setOrganizationLocations(
-        locations,
-      );
+    setItems(registerResponse.data);
+    setOrganizationLocations(locations);
+    setDashboardError('');
 
-      return true;
-    } catch (err) {
+    return true;
+  } catch (err) {
+    // A failed background request should not replace
+    // valid displayed data with an error message.
+    if (!silent) {
       setDashboardError(
         err instanceof Error
           ? err.message
           : 'Unable to load dashboard data.',
       );
+    }
 
-      return false;
-    } finally {
+    return false;
+  } finally {
+    if (!silent) {
       setDashboardLoading(false);
     }
   }
+}
 
-  /*
-   * --------------------------------------------------
-   * LOAD STOCK MOVEMENT
-   * --------------------------------------------------
-   */
-
-  async function loadMovement(): Promise<boolean> {
-    try {
+async function loadMovement(
+  silent = false,
+  respectPause = false,
+): Promise<boolean> {
+  try {
+    if (!silent) {
       setMovementLoading(true);
       setMovementError('');
+    }
 
-      const token =
-        window.localStorage.getItem(
-          'accessToken',
-        );
+    const token =
+      window.localStorage.getItem('accessToken');
 
-      if (!token) {
-        throw new Error(
-          'Please sign in first.',
-        );
-      }
+    if (!token) {
+      throw new Error('Please sign in first.');
+    }
 
-      const response =
-        await apiFetch<MovementTrendResponse>(
-          '/inventory/movement-trend?days=30',
-          token,
-        );
+    const response =
+      await apiFetch<MovementTrendResponse>(
+        '/inventory/movement-trend?days=30',
+        token,
+      );
 
-      if (
-        !response ||
-        !response.totals ||
-        !Array.isArray(response.data)
-      ) {
-        throw new Error(
-          'Stock movement response is incomplete.',
-        );
-      }
+    if (
+      !response ||
+      !response.totals ||
+      !Array.isArray(response.data)
+    ) {
+      throw new Error(
+        'Stock movement response is incomplete.',
+      );
+    }
 
-      const normalized: MovementTrendResponse = {
-        days: Number(
-          response.days,
+    if (
+      silent &&
+      respectPause &&
+      interactionSourcesRef.current.size > 0
+    ) {
+      return false;
+    }
+
+    const normalized: MovementTrendResponse = {
+      days: Number(response.days),
+      fromDate: response.fromDate,
+      toDate: response.toDate,
+      totals: {
+        received: Number(
+          response.totals.received ?? 0,
         ),
-
-        fromDate:
-          response.fromDate,
-
-        toDate:
-          response.toDate,
-
-        totals: {
-          received: Number(
-            response.totals.received ??
-              0,
-          ),
-
-          issued: Number(
-            response.totals.issued ??
-              0,
-          ),
-
-          adjusted: Number(
-            response.totals.adjusted ??
-              0,
-          ),
-
-          transferred: Number(
-            response.totals.transferred ??
-              0,
-          ),
-        },
-
-        data: response.data.map(
-          (bucket) => ({
-            date: bucket.date,
-
-            received: Number(
-              bucket.received ?? 0,
-            ),
-
-            issued: Number(
-              bucket.issued ?? 0,
-            ),
-
-            adjusted: Number(
-              bucket.adjusted ?? 0,
-            ),
-
-            transferred: Number(
-              bucket.transferred ?? 0,
-            ),
-          }),
+        issued: Number(
+          response.totals.issued ?? 0,
         ),
-      };
+        adjusted: Number(
+          response.totals.adjusted ?? 0,
+        ),
+        transferred: Number(
+          response.totals.transferred ?? 0,
+        ),
+      },
+      data: response.data.map((bucket) => ({
+        date: bucket.date,
+        received: Number(bucket.received ?? 0),
+        issued: Number(bucket.issued ?? 0),
+        adjusted: Number(bucket.adjusted ?? 0),
+        transferred: Number(bucket.transferred ?? 0),
+      })),
+    };
 
-      setMovement(normalized);
+    setMovement(normalized);
+    setMovementError('');
 
-      return true;
-    } catch (err) {
+    return true;
+  } catch (err) {
+    if (!silent) {
       setMovementError(
         err instanceof Error
           ? err.message
           : 'Unable to load stock movement.',
       );
+    }
 
-      return false;
-    } finally {
+    return false;
+  } finally {
+    if (!silent) {
       setMovementLoading(false);
     }
   }
+}
 
-  /*
-   * --------------------------------------------------
-   * REFRESH DASHBOARD
-   *
-   * One refresh function is used both on first load
-   * and after a successful stock operation.
-   * --------------------------------------------------
-   */
+async function refreshDashboard(
+  silent = false,
+  refreshChildren = silent,
+  respectPause = silent,
+): Promise<void> {
+  if (refreshInProgressRef.current) {
+    return;
+  }
 
-  async function refreshDashboard() {
+  refreshInProgressRef.current = true;
+
+  try {
     const [
       dashboardSuccess,
       movementSuccess,
     ] = await Promise.all([
-      loadDashboardData(),
-      loadMovement(),
+      loadDashboardData(silent, respectPause),
+      loadMovement(silent, respectPause),
     ]);
 
+    if (dashboardSuccess && movementSuccess) {
+      setLastSyncedAt(new Date());
+
+      // Do not update child widgets while someone has
+      // a modal open or is completing a stock operation.
+      if (
+        refreshChildren &&
+        interactionSourcesRef.current.size === 0 &&
+        document.visibilityState === 'visible'
+      ) {
+        window.dispatchEvent(
+          new Event('stockpile:refresh'),
+        );
+      }
+    }
+  } finally {
+    refreshInProgressRef.current = false;
+
+    // If a refresh was requested while another was running,
+    // perform it once the current request has completed.
     if (
-      dashboardSuccess &&
-      movementSuccess
+      pendingSilentRefreshRef.current &&
+      interactionSourcesRef.current.size === 0 &&
+      document.visibilityState === 'visible'
     ) {
-      setLastSyncedAt(
-        new Date(),
-      );
+      pendingSilentRefreshRef.current = false;
+      void silentRefreshRef.current?.();
     }
   }
+}
 
-  useEffect(() => {
-    refreshDashboard();
-  }, []);
+// Initial load: normal loading states are allowed here.
+useEffect(() => {
+  void refreshDashboard();
+}, []);
 
+// Refresh quietly every five seconds.
+useEffect(() => {
+  let mounted = true;
+
+  const runSilentRefresh = async () => {
+    if (
+      !mounted ||
+      document.visibilityState !== 'visible' ||
+      interactionSourcesRef.current.size > 0
+    ) {
+      return;
+    }
+
+    if (refreshInProgressRef.current) {
+      pendingSilentRefreshRef.current = true;
+      return;
+    }
+
+    await refreshDashboard(true, true, true);
+  };
+
+  silentRefreshRef.current = runSilentRefresh;
+
+  const handleInteraction = (event: Event) => {
+    const customEvent =
+      event as CustomEvent<{
+        source?: string;
+        active?: boolean;
+      }>;
+
+    const source = customEvent.detail?.source;
+    const active = customEvent.detail?.active;
+
+    if (!source) {
+      return;
+    }
+
+    if (active) {
+      interactionSourcesRef.current.add(source);
+      return;
+    }
+
+    interactionSourcesRef.current.delete(source);
+
+    // Resume and refresh immediately when all modals close.
+    if (
+      interactionSourcesRef.current.size === 0 &&
+      document.visibilityState === 'visible'
+    ) {
+      void silentRefreshRef.current?.();
+    }
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      void silentRefreshRef.current?.();
+    }
+  };
+
+  window.addEventListener(
+    'stockpile:dashboard-interaction',
+    handleInteraction,
+  );
+
+  document.addEventListener(
+    'visibilitychange',
+    handleVisibilityChange,
+  );
+
+  const intervalId = window.setInterval(() => {
+    void runSilentRefresh();
+  }, 5000);
+
+  return () => {
+    mounted = false;
+    window.clearInterval(intervalId);
+
+    window.removeEventListener(
+      'stockpile:dashboard-interaction',
+      handleInteraction,
+    );
+
+    document.removeEventListener(
+      'visibilitychange',
+      handleVisibilityChange,
+    );
+
+    silentRefreshRef.current = null;
+  };
+}, []);
   /*
    * --------------------------------------------------
    * MOVEMENT DATA
@@ -381,10 +485,12 @@ export default function DashboardPage() {
    * --------------------------------------------------
    */
 
-  async function handleQuickActionCompleted() {
-    await refreshDashboard();
-  }
-
+ async function handleQuickActionCompleted() {
+  // The action modal is still open here.
+  // Refresh parent data quietly without updating the
+  // child panels until the action modal has closed.
+  await refreshDashboard(true, false, false);
+}
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--text)]">
       <InventorySidebar
@@ -415,7 +521,10 @@ export default function DashboardPage() {
 
                   <div className="mb-3 flex items-center gap-2">
 
-                    <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
+                    <span
+                        className="stockpile-status-dot"
+                        aria-hidden="true"
+                      />
 
                     <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--accent)]">
 
