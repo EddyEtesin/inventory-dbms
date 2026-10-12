@@ -1,29 +1,30 @@
-export type InventoryStatus = 'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+export type InventoryStatus =
+  | 'ALL'
+  | 'IN_STOCK'
+  | 'LOW_STOCK'
+  | 'OUT_OF_STOCK';
 
-export type Operation = 'receive' | 'issue' | 'adjust' | 'transfer' | null;
+export type Operation =
+  | 'receive'
+  | 'issue'
+  | 'adjust'
+  | 'transfer'
+  | null;
 
 export type RegisterItem = {
   id: string;
   sku: string;
   name: string;
-
   category: {
     id: string;
     name: string;
   } | null;
-
   unitOfMeasure: string;
-
   unitPrice: number;
-
   sellingPrice: number | null;
-
   quantity: number;
-
   locations: number;
-
   reorderLevel: number;
-
   status:
     | 'IN_STOCK'
     | 'LOW_STOCK'
@@ -48,6 +49,10 @@ export type Transaction = {
   reference: string | null;
   notes: string | null;
   createdAt: string;
+  location?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 export type TransactionResponse = {
@@ -60,11 +65,13 @@ export type TransactionResponse = {
     location: {
       id: string;
       name: string;
-    };
+    } | null;
     currentQuantity: number;
     transactionCount: number;
   };
+
   data: Transaction[];
+
   pagination: {
     page: number;
     pageSize: number;
@@ -94,15 +101,18 @@ export type RecentActivity = {
   quantity: number;
   reference?: string | null;
   notes?: string | null;
+
   item?: {
     id: string;
     name: string;
     sku: string;
   };
+
   location?: {
     id: string;
     name: string;
   };
+
   performedBy?: {
     id: string;
     name: string | null;

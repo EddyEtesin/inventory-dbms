@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+
+import {
+  Geist,
+  Geist_Mono,
+} from 'next/font/google';
+
 import './globals.css';
 
 import AuthGuard from '../components/auth/AuthGuard';
@@ -15,8 +20,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Inventory Ledger',
-  description: 'Inventory management system',
+  title: 'Stockpile',
+  description:
+    'Inventory management system',
 };
 
 export default function RootLayout({
@@ -27,7 +33,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full bg-[var(--background)] font-sans text-[var(--foreground)]">
         <AuthGuard>
           {children}
         </AuthGuard>

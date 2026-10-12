@@ -82,10 +82,12 @@ type Item = {
   sellingPrice: number | string | null;
   reorderLevel: number;
   status: 'active' | 'discontinued' | 'archived';
+
   category?: {
     id: string;
     name: string;
   } | null;
+
   supplier?: {
     id: string;
     name: string;
@@ -97,6 +99,7 @@ type ItemLocationRecord = {
   itemId: string;
   locationId: string;
   quantity: number;
+
   location?: {
     id: string;
     name: string;
@@ -111,7 +114,9 @@ type CollectionResponse<T> =
       data?: T[];
     };
 
-function extractApiError(message: string): string {
+function extractApiError(
+  message: string,
+): string {
   try {
     const parsed = JSON.parse(message);
 
@@ -119,18 +124,27 @@ function extractApiError(message: string): string {
       return parsed.message.join(', ');
     }
 
-    if (typeof parsed?.message === 'string') {
+    if (
+      typeof parsed?.message ===
+      'string'
+    ) {
       return parsed.message;
     }
 
-    if (typeof parsed?.error === 'string') {
+    if (
+      typeof parsed?.error ===
+      'string'
+    ) {
       return parsed.error;
     }
   } catch {
     // Keep the original message.
   }
 
-  return message || 'Something went wrong.';
+  return (
+    message ||
+    'Something went wrong.'
+  );
 }
 
 function asCollection<T>(
@@ -150,11 +164,14 @@ function formatCurrency(
     return '₦0';
   }
 
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return new Intl.NumberFormat(
+    'en-NG',
+    {
+      style: 'currency',
+      currency: 'NGN',
+      maximumFractionDigits: 0,
+    },
+  ).format(amount);
 }
 
 function formatStatus(
@@ -170,7 +187,9 @@ export default function ItemsPage() {
     useState(false);
 
   const [organization, setOrganization] =
-    useState<Organization | null>(null);
+    useState<Organization | null>(
+      null,
+    );
 
   const [items, setItems] =
     useState<Item[]>([]);
@@ -184,28 +203,43 @@ export default function ItemsPage() {
   const [locations, setLocations] =
     useState<Location[]>([]);
 
-  const [itemLocationRecords, setItemLocationRecords] =
-    useState<Record<string, ItemLocationRecord[]>>({});
+  const [
+    itemLocationRecords,
+    setItemLocationRecords,
+  ] = useState<
+    Record<
+      string,
+      ItemLocationRecord[]
+    >
+  >({});
 
   // --------------------------------------------------
   // ITEM DRAWER
   // --------------------------------------------------
 
   const [selectedItem, setSelectedItem] =
-    useState<RegisterItem | null>(null);
+    useState<RegisterItem | null>(
+      null,
+    );
 
   const [operation, setOperation] =
     useState<Operation>(null);
 
-  const [operationLocationId, setOperationLocationId] =
+  const [
+    operationLocationId,
+    setOperationLocationId,
+  ] = useState('');
+
+  const [
+    targetLocationId,
+    setTargetLocationId,
+  ] = useState('');
+
+  const [quantity, setQuantity] =
     useState('');
 
-  const [targetLocationId, setTargetLocationId] =
+  const [notes, setNotes] =
     useState('');
-
-  const [quantity, setQuantity] = useState('');
-  const [reference, setReference] = useState('');
-  const [notes, setNotes] = useState('');
 
   const [submitting, setSubmitting] =
     useState(false);
@@ -216,28 +250,49 @@ export default function ItemsPage() {
   const [transactions, setTransactions] =
     useState<Transaction[]>([]);
 
-  const [transactionLoading, setTransactionLoading] =
-    useState(false);
+  const [
+    transactionLoading,
+    setTransactionLoading,
+  ] = useState(false);
 
-  const [transactionPage, setTransactionPage] =
-    useState(1);
+  const [
+    transactionLocationId,
+    setTransactionLocationId,
+  ] = useState<string | null>(
+    null,
+  );
 
-  const [transactionTotalPages, setTransactionTotalPages] =
-    useState(1);
+  const [
+    transactionPage,
+    setTransactionPage,
+  ] = useState(1);
 
-  const [hasNextTransactionPage, setHasNextTransactionPage] =
-    useState(false);
+  const [
+    transactionTotalPages,
+    setTransactionTotalPages,
+  ] = useState(1);
 
-  const [hasPreviousTransactionPage, setHasPreviousTransactionPage] =
-    useState(false);
+  const [
+    hasNextTransactionPage,
+    setHasNextTransactionPage,
+  ] = useState(false);
+
+  const [
+    hasPreviousTransactionPage,
+    setHasPreviousTransactionPage,
+  ] = useState(false);
 
   const pageSize = 10;
 
-  const [existingLocationIds, setExistingLocationIds] =
-    useState<string[]>([]);
+  const [
+    existingLocationIds,
+    setExistingLocationIds,
+  ] = useState<string[]>([]);
 
-  const [selectedLocationIds, setSelectedLocationIds] =
-    useState<string[]>([]);
+  const [
+    selectedLocationIds,
+    setSelectedLocationIds,
+  ] = useState<string[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -292,15 +347,22 @@ export default function ItemsPage() {
       'active' | 'discontinued'
     >('active');
 
-  useAutoDismissMessage(error, setError);
+  useAutoDismissMessage(
+    error,
+    setError,
+  );
 
   async function fetchItemLocations(
     itemId: string,
     token: string,
-  ): Promise<ItemLocationRecord[]> {
+  ): Promise<
+    ItemLocationRecord[]
+  > {
     try {
       const response =
-        await apiFetch<ItemLocationRecord[]>(
+        await apiFetch<
+          ItemLocationRecord[]
+        >(
           `/inventory/items/${itemId}`,
           token,
         );
@@ -323,13 +385,15 @@ export default function ItemsPage() {
     > = {};
 
     await Promise.all(
-      itemsData.map(async (item) => {
-        locationMap[item.id] =
-          await fetchItemLocations(
-            item.id,
-            token,
-          );
-      }),
+      itemsData.map(
+        async (item) => {
+          locationMap[item.id] =
+            await fetchItemLocations(
+              item.id,
+              token,
+            );
+        },
+      ),
     );
 
     setItemLocationRecords(
@@ -353,11 +417,13 @@ export default function ItemsPage() {
         )
         .map((record) => ({
           id: record.id,
-          locationId: record.locationId,
+          locationId:
+            record.locationId,
           locationName:
             record.location?.name ??
             'Unknown location',
-          quantity: record.quantity,
+          quantity:
+            record.quantity,
         }));
 
     const totalQuantity =
@@ -389,8 +455,11 @@ export default function ItemsPage() {
       sellingPrice:
         item.sellingPrice == null
           ? null
-          : Number(item.sellingPrice),
-      quantity: totalQuantity,
+          : Number(
+              item.sellingPrice,
+            ),
+      quantity:
+        totalQuantity,
       locations:
         locationBreakdown.length,
       reorderLevel:
@@ -441,21 +510,32 @@ export default function ItemsPage() {
       ]);
 
       const itemsData =
-        asCollection(itemsResponse);
+        asCollection(
+          itemsResponse,
+        );
 
       setOrganization(
         me.organization,
       );
 
       setItems(itemsData);
+
       setCategories(
-        asCollection(categoriesResponse),
+        asCollection(
+          categoriesResponse,
+        ),
       );
+
       setSuppliers(
-        asCollection(suppliersResponse),
+        asCollection(
+          suppliersResponse,
+        ),
       );
+
       setLocations(
-        asCollection(locationsResponse),
+        asCollection(
+          locationsResponse,
+        ),
       );
 
       await loadItemLocations(
@@ -479,48 +559,57 @@ export default function ItemsPage() {
     loadPage();
   }, [router]);
 
-  const visibleItems = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+  const visibleItems = useMemo(
+    () => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
 
-    if (!query) {
-      return items;
-    }
+      if (!query) {
+        return items;
+      }
 
-    return items.filter((item) => {
-      return (
-        item.name
-          .toLowerCase()
-          .includes(query) ||
-        item.sku
-          .toLowerCase()
-          .includes(query) ||
-        item.category?.name
-          .toLowerCase()
-          .includes(query) ||
-        item.supplier?.name
-          .toLowerCase()
-          .includes(query)
+      return items.filter(
+        (item) =>
+          item.name
+            .toLowerCase()
+            .includes(query) ||
+          item.sku
+            .toLowerCase()
+            .includes(query) ||
+          item.category?.name
+            .toLowerCase()
+            .includes(query) ||
+          item.supplier?.name
+            .toLowerCase()
+            .includes(query),
       );
-    });
-  }, [items, search]);
+    },
+    [items, search],
+  );
 
   const activeCount =
     items.filter(
       (item) =>
-        item.status === 'active',
+        item.status ===
+        'active',
     ).length;
 
   const archivedCount =
     items.filter(
       (item) =>
-        item.status === 'archived',
+        item.status ===
+        'archived',
     ).length;
 
   const industryLabel =
     organization?.industryType
       ? organization.industryType
-          .replace(/_/g, ' ')
+          .replace(
+            /_/g,
+            ' ',
+          )
           .toUpperCase()
       : 'ORGANIZATION';
 
@@ -535,8 +624,12 @@ export default function ItemsPage() {
     setSellingPrice('');
     setReorderLevel('');
     setStatus('active');
-    setSelectedLocationIds([]);
-    setExistingLocationIds([]);
+    setSelectedLocationIds(
+      [],
+    );
+    setExistingLocationIds(
+      [],
+    );
     setFormError('');
     setEditingItem(null);
   }
@@ -590,43 +683,61 @@ export default function ItemsPage() {
       ];
 
       setEditingItem(item);
+
       setSku(item.sku);
       setName(item.name);
+
       setDescription(
         item.description ?? '',
       );
+
       setCategoryId(
         item.categoryId ?? '',
       );
+
       setSupplierId(
         item.supplierId ?? '',
       );
+
       setUnitOfMeasure(
         item.unitOfMeasure,
       );
+
       setUnitPrice(
-        String(item.unitPrice),
+        String(
+          item.unitPrice,
+        ),
       );
+
       setSellingPrice(
         item.sellingPrice == null
           ? ''
-          : String(item.sellingPrice),
+          : String(
+              item.sellingPrice,
+            ),
       );
+
       setReorderLevel(
-        String(item.reorderLevel),
+        String(
+          item.reorderLevel,
+        ),
       );
+
       setStatus(
         item.status ===
           'discontinued'
           ? 'discontinued'
           : 'active',
       );
+
       setExistingLocationIds(
         ids,
       );
+
       setSelectedLocationIds(
         ids,
       );
+
       setShowForm(true);
     } catch (err) {
       setError(
@@ -658,7 +769,8 @@ export default function ItemsPage() {
         )
           ? current.filter(
               (id) =>
-                id !== locationId,
+                id !==
+                locationId,
             )
           : [
               ...current,
@@ -681,13 +793,12 @@ export default function ItemsPage() {
         selectedLocationIds,
       );
 
-    const removed =
-      [
-        ...existing,
-      ].filter(
-        (id) =>
-          !selected.has(id),
-      );
+    const removed = [
+      ...existing,
+    ].filter(
+      (id) =>
+        !selected.has(id),
+    );
 
     const added =
       selectedLocationIds.filter(
@@ -696,11 +807,14 @@ export default function ItemsPage() {
           locations.some(
             (location) =>
               location.id === id &&
-              location.status === 'active',
+              location.status ===
+                'active',
           ),
       );
 
-    for (const locationId of removed) {
+    for (
+      const locationId of removed
+    ) {
       await apiFetch(
         `/inventory/items/${itemId}/locations/${locationId}`,
         token,
@@ -710,7 +824,9 @@ export default function ItemsPage() {
       );
     }
 
-    for (const locationId of added) {
+    for (
+      const locationId of added
+    ) {
       await apiFetch(
         `/inventory/items/${itemId}/locations/${locationId}/initialize`,
         token,
@@ -744,7 +860,9 @@ export default function ItemsPage() {
     const numericSellingPrice =
       trimmedSellingPrice === ''
         ? null
-        : Number(trimmedSellingPrice);
+        : Number(
+            trimmedSellingPrice,
+          );
 
     const numericReorderLevel =
       Number(reorderLevel);
@@ -783,7 +901,8 @@ export default function ItemsPage() {
     }
 
     if (
-      numericSellingPrice !== null &&
+      numericSellingPrice !==
+        null &&
       (!Number.isFinite(
         numericSellingPrice,
       ) ||
@@ -821,15 +940,19 @@ export default function ItemsPage() {
         (locationId) =>
           locations.some(
             (location) =>
-              location.id === locationId &&
-              (location.status === 'active' ||
+              location.id ===
+                locationId &&
+              (location.status ===
+                'active' ||
                 existingLocationIds.includes(
                   locationId,
                 )),
           ),
       );
 
-    if (!hasUsableSelectedLocation) {
+    if (
+      !hasUsableSelectedLocation
+    ) {
       setFormError(
         'Assign the item to at least one active location.',
       );
@@ -853,32 +976,41 @@ export default function ItemsPage() {
       const body = {
         sku: trimmedSku,
         name: trimmedName,
+
         ...(description.trim()
           ? {
               description:
                 description.trim(),
             }
           : {}),
+
         ...(categoryId
           ? { categoryId }
           : {}),
+
         ...(supplierId
           ? { supplierId }
           : {}),
+
         unitOfMeasure:
           trimmedUnit,
+
         unitPrice:
           numericUnitPrice.toFixed(
             2,
           ),
+
         sellingPrice:
-          numericSellingPrice === null
+          numericSellingPrice ===
+          null
             ? null
             : numericSellingPrice.toFixed(
                 2,
               ),
+
         reorderLevel:
           numericReorderLevel,
+
         ...(editingItem
           ? { status }
           : {}),
@@ -946,7 +1078,9 @@ export default function ItemsPage() {
     page = 1,
   ) {
     try {
-      setTransactionLoading(true);
+      setTransactionLoading(
+        true,
+      );
 
       const token =
         window.localStorage.getItem(
@@ -998,6 +1132,65 @@ export default function ItemsPage() {
     }
   }
 
+  async function loadAllTransactions(
+    item: RegisterItem,
+    page = 1,
+  ) {
+    try {
+      setTransactionLoading(
+        true,
+      );
+
+      const token =
+        window.localStorage.getItem(
+          'accessToken',
+        );
+
+      if (!token) {
+        throw new Error(
+          'Please sign in first.',
+        );
+      }
+
+      const response =
+        await apiFetch<TransactionResponse>(
+          `/inventory/items/${item.id}/transactions?page=${page}&pageSize=${pageSize}`,
+          token,
+        );
+
+      setTransactions(
+        response.data,
+      );
+
+      setTransactionPage(
+        response.pagination.page,
+      );
+
+      setTransactionTotalPages(
+        response.pagination.totalPages,
+      );
+
+      setHasNextTransactionPage(
+        response.pagination.hasNextPage,
+      );
+
+      setHasPreviousTransactionPage(
+        response.pagination.hasPreviousPage,
+      );
+    } catch (err) {
+      console.error(
+        'Unable to load all transactions:',
+        err,
+      );
+
+      setTransactions([]);
+    } finally {
+      setTransactionLoading(
+        false,
+      );
+    }
+  }
+
   async function openItem(
     item: Item,
   ) {
@@ -1038,31 +1231,36 @@ export default function ItemsPage() {
       setOperation(null);
       setOperationError('');
       setQuantity('');
-      setReference('');
       setNotes('');
       setTargetLocationId('');
+      setTransactionLocationId(
+        null,
+      );
       setTransactionPage(1);
-      setTransactionTotalPages(1);
-      setHasNextTransactionPage(false);
-      setHasPreviousTransactionPage(false);
+      setTransactionTotalPages(
+        1,
+      );
+      setHasNextTransactionPage(
+        false,
+      );
+      setHasPreviousTransactionPage(
+        false,
+      );
 
       const firstLocation =
-        registerItem.locationBreakdown[0];
+        registerItem
+          .locationBreakdown[0];
 
-      if (firstLocation) {
-        setOperationLocationId(
-          firstLocation.locationId,
-        );
+      setOperationLocationId(
+        firstLocation
+          ?.locationId ??
+          '',
+      );
 
-        await loadTransactions(
-          registerItem,
-          firstLocation.locationId,
-          1,
-        );
-      } else {
-        setOperationLocationId('');
-        setTransactions([]);
-      }
+      await loadAllTransactions(
+        registerItem,
+        1,
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -1085,34 +1283,74 @@ export default function ItemsPage() {
     setOperationLocationId('');
     setTargetLocationId('');
     setQuantity('');
-    setReference('');
     setNotes('');
     setOperationError('');
+    setTransactionLocationId(
+      null,
+    );
     setTransactionPage(1);
-    setTransactionTotalPages(1);
-    setHasNextTransactionPage(false);
-    setHasPreviousTransactionPage(false);
+    setTransactionTotalPages(
+      1,
+    );
+    setHasNextTransactionPage(
+      false,
+    );
+    setHasPreviousTransactionPage(
+      false,
+    );
   }
 
-  async function handleLocationSelect(
+  async function handleViewLocationTransactions(
     locationId: string,
   ) {
     if (!selectedItem) {
       return;
     }
 
-    setOperationLocationId(
+    setTransactionLocationId(
       locationId,
     );
 
     setTransactionPage(1);
-    setTransactionTotalPages(1);
-    setHasNextTransactionPage(false);
-    setHasPreviousTransactionPage(false);
+    setTransactionTotalPages(
+      1,
+    );
+    setHasNextTransactionPage(
+      false,
+    );
+    setHasPreviousTransactionPage(
+      false,
+    );
 
     await loadTransactions(
       selectedItem,
       locationId,
+      1,
+    );
+  }
+
+  async function handleViewAllTransactions() {
+    if (!selectedItem) {
+      return;
+    }
+
+    setTransactionLocationId(
+      null,
+    );
+
+    setTransactionPage(1);
+    setTransactionTotalPages(
+      1,
+    );
+    setHasNextTransactionPage(
+      false,
+    );
+    setHasPreviousTransactionPage(
+      false,
+    );
+
+    await loadAllTransactions(
+      selectedItem,
       1,
     );
   }
@@ -1130,14 +1368,15 @@ export default function ItemsPage() {
     setOperation(
       nextOperation,
     );
+
     setOperationError('');
     setQuantity('');
-    setReference('');
     setNotes('');
     setTargetLocationId('');
 
     if (
-      selectedItem.locationBreakdown.length >
+      selectedItem
+        .locationBreakdown.length >
       0
     ) {
       setOperationLocationId(
@@ -1156,7 +1395,6 @@ export default function ItemsPage() {
     setOperation(null);
     setOperationError('');
     setQuantity('');
-    setReference('');
     setNotes('');
     setTargetLocationId('');
   }
@@ -1291,6 +1529,7 @@ export default function ItemsPage() {
       }
 
       let endpoint = '';
+
       let body: Record<
         string,
         unknown
@@ -1306,9 +1545,7 @@ export default function ItemsPage() {
           quantity: amount,
           idempotencyKey:
             crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
+
           ...(notes
             ? { notes }
             : {}),
@@ -1323,9 +1560,7 @@ export default function ItemsPage() {
           quantity: amount,
           idempotencyKey:
             crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
+
           ...(notes
             ? { notes }
             : {}),
@@ -1340,9 +1575,7 @@ export default function ItemsPage() {
           quantity: amount,
           idempotencyKey:
             crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
+
           ...(notes
             ? { notes }
             : {}),
@@ -1359,9 +1592,7 @@ export default function ItemsPage() {
           quantity: amount,
           idempotencyKey:
             crypto.randomUUID(),
-          ...(reference
-            ? { reference }
-            : {}),
+
           ...(notes
             ? { notes }
             : {}),
@@ -1382,22 +1613,27 @@ export default function ItemsPage() {
       const refreshed =
         await refreshOpenItem();
 
-      if (
-        refreshed &&
-        operationLocationId
-      ) {
-        await loadTransactions(
-          refreshed,
-          operationLocationId,
-          1,
-        );
+      if (refreshed) {
+        if (
+          transactionLocationId
+        ) {
+          await loadTransactions(
+            refreshed,
+            transactionLocationId,
+            1,
+          );
+        } else {
+          await loadAllTransactions(
+            refreshed,
+            1,
+          );
+        }
       }
 
       await loadPage();
 
       setOperation(null);
       setQuantity('');
-      setReference('');
       setNotes('');
       setTargetLocationId('');
       setOperationError('');
@@ -1417,35 +1653,51 @@ export default function ItemsPage() {
   async function handlePreviousPage() {
     if (
       !selectedItem ||
-      !operationLocationId ||
       !hasPreviousTransactionPage ||
       transactionLoading
     ) {
       return;
     }
 
-    await loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage - 1,
-    );
+    if (
+      transactionLocationId
+    ) {
+      await loadTransactions(
+        selectedItem,
+        transactionLocationId,
+        transactionPage - 1,
+      );
+    } else {
+      await loadAllTransactions(
+        selectedItem,
+        transactionPage - 1,
+      );
+    }
   }
 
   async function handleNextPage() {
     if (
       !selectedItem ||
-      !operationLocationId ||
       !hasNextTransactionPage ||
       transactionLoading
     ) {
       return;
     }
 
-    await loadTransactions(
-      selectedItem,
-      operationLocationId,
-      transactionPage + 1,
-    );
+    if (
+      transactionLocationId
+    ) {
+      await loadTransactions(
+        selectedItem,
+        transactionLocationId,
+        transactionPage + 1,
+      );
+    } else {
+      await loadAllTransactions(
+        selectedItem,
+        transactionPage + 1,
+      );
+    }
   }
 
   async function archiveItem(
@@ -1514,7 +1766,6 @@ export default function ItemsPage() {
       >
         <div className="p-3 md:p-5">
           <div className="mx-auto max-w-[1250px]">
-
             {/* HEADER */}
             <header className="border border-[#b7a87e] bg-[#f5f0e3] px-5 py-4 shadow-[0_2px_0_#b7a87e,0_8px_20px_rgba(43,38,32,0.12)]">
               <div className="flex items-center justify-between gap-4">
@@ -1539,7 +1790,6 @@ export default function ItemsPage() {
               <div className="pointer-events-none absolute inset-2 border border-dashed border-[#2b2620]/15" />
 
               <div className="relative">
-
                 {/* TITLE */}
                 <div className="flex flex-col gap-4 border-b border-dashed border-[#b7a87e] pb-5 md:flex-row md:items-end md:justify-between">
                   <div>
@@ -1628,7 +1878,8 @@ export default function ItemsPage() {
 
                     <div className="mt-1 font-mono text-[11px]">
                       {visibleItems.length}{' '}
-                      {visibleItems.length === 1
+                      {visibleItems.length ===
+                      1
                         ? 'RECORD'
                         : 'RECORDS'}
                     </div>
@@ -1663,7 +1914,8 @@ export default function ItemsPage() {
                     <div className="px-4 py-12 text-center font-mono text-[9px] text-[#5b5346]">
                       LOADING ITEM REGISTER...
                     </div>
-                  ) : visibleItems.length === 0 ? (
+                  ) : visibleItems.length ===
+                    0 ? (
                     <div className="px-5 py-12 text-center">
                       <Package
                         size={30}
@@ -1693,18 +1945,23 @@ export default function ItemsPage() {
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               SKU
                             </th>
+
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               ITEM
                             </th>
+
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               CATEGORY
                             </th>
+
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               SUPPLIER
                             </th>
+
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               LOCATIONS
                             </th>
+
                             <th className="px-4 py-3 text-left font-mono text-[7px] tracking-widest text-[#5b5346]">
                               STATUS
                             </th>
@@ -1741,6 +1998,7 @@ export default function ItemsPage() {
                                         ' '
                                     ) {
                                       event.preventDefault();
+
                                       openItem(
                                         item,
                                       );
@@ -1761,13 +2019,14 @@ export default function ItemsPage() {
                                       {formatCurrency(
                                         item.unitPrice,
                                       )}{' '}
-                                      · sell {' '}
-                                      {item.sellingPrice == null
+                                      · sell{' '}
+                                      {item.sellingPrice ==
+                                      null
                                         ? '—'
                                         : formatCurrency(
                                             item.sellingPrice,
                                           )}{' '}
-                                      · reorder {' '}
+                                      · reorder{' '}
                                       {item.reorderLevel}
                                     </div>
                                   </td>
@@ -1806,9 +2065,7 @@ export default function ItemsPage() {
                                               />
 
                                               <span className="truncate">
-                                                {record
-                                                  .location
-                                                  ?.name ??
+                                                {record.location?.name ??
                                                   'UNKNOWN LOCATION'}
                                               </span>
 
@@ -1865,82 +2122,114 @@ export default function ItemsPage() {
 
       {/* ITEM DETAILS / STOCK DRAWER */}
       <ItemDrawer
-        selectedItem={selectedItem}
-        organizationLocations={locations}
+        selectedItem={
+          selectedItem
+        }
+
+        organizationLocations={
+          locations
+        }
+
         operation={operation}
+
         operationLocationId={
           operationLocationId
         }
+
         targetLocationId={
           targetLocationId
         }
-        quantity={quantity}
-        reference={reference}
+
+        quantity={
+          quantity
+        }
+
         notes={notes}
-        submitting={submitting}
-        operationError={operationError}
-        transactions={transactions}
+
+        submitting={
+          submitting
+        }
+
+        operationError={
+          operationError
+        }
+
+        transactions={
+          transactions
+        }
+
         transactionLoading={
           transactionLoading
         }
+
+        transactionLocationId={
+          transactionLocationId
+        }
+
         transactionPage={
           transactionPage
         }
+
         transactionTotalPages={
           transactionTotalPages
         }
+
         hasNextTransactionPage={
           hasNextTransactionPage
         }
+
         hasPreviousTransactionPage={
           hasPreviousTransactionPage
         }
-        onClose={closeDrawer}
-        onLocationSelect={
-          handleLocationSelect
+
+        onClose={
+          closeDrawer
         }
+
+        onViewLocationTransactions={
+          handleViewLocationTransactions
+        }
+
+        onViewAllTransactions={
+          handleViewAllTransactions
+        }
+
         onStartOperation={
           startOperation
         }
+
         onOperationSubmit={
           handleOperationSubmit
         }
+
         onOperationCancel={
           cancelOperation
         }
-        onOperationLocationChange={
-          async (locationId) => {
-            setOperationLocationId(
-              locationId,
-            );
 
-            if (selectedItem) {
-              await loadTransactions(
-                selectedItem,
-                locationId,
-                1,
-              );
-            }
-          }
+        onOperationLocationChange={
+          setOperationLocationId
         }
+
         onTargetLocationChange={
           setTargetLocationId
         }
+
         onQuantityChange={
           setQuantity
         }
-        onReferenceChange={
-          setReference
-        }
+
         onNotesChange={
           setNotes
         }
+
         onPreviousPage={
           handlePreviousPage
         }
+
         onNextPage={
           handleNextPage
         }
+
         onEdit={() => {
           const currentItem =
             items.find(
@@ -1951,11 +2240,13 @@ export default function ItemsPage() {
 
           if (currentItem) {
             closeDrawer();
+
             openEditForm(
               currentItem,
             );
           }
         }}
+
         onArchive={() => {
           const currentItem =
             items.find(
@@ -1970,6 +2261,7 @@ export default function ItemsPage() {
             );
           }
         }}
+
         itemArchived={
           items.find(
             (item) =>
@@ -1986,7 +2278,9 @@ export default function ItemsPage() {
           <button
             type="button"
             aria-label="Close item form"
-            onClick={closeForm}
+            onClick={
+              closeForm
+            }
             className="fixed inset-0 z-[60] bg-[#2b2620]/45"
           />
 
@@ -2041,8 +2335,12 @@ export default function ItemsPage() {
                   required
                 >
                   <input
-                    value={sku}
-                    onChange={(event) =>
+                    value={
+                      sku
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setSku(
                         event.target
                           .value,
@@ -2058,8 +2356,12 @@ export default function ItemsPage() {
                   required
                 >
                   <input
-                    value={name}
-                    onChange={(event) =>
+                    value={
+                      name
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setName(
                         event.target
                           .value,
@@ -2072,8 +2374,12 @@ export default function ItemsPage() {
 
                 <Field label="CATEGORY">
                   <select
-                    value={categoryId}
-                    onChange={(event) =>
+                    value={
+                      categoryId
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setCategoryId(
                         event.target
                           .value,
@@ -2108,8 +2414,12 @@ export default function ItemsPage() {
 
                 <Field label="SUPPLIER">
                   <select
-                    value={supplierId}
-                    onChange={(event) =>
+                    value={
+                      supplierId
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setSupplierId(
                         event.target
                           .value,
@@ -2150,7 +2460,9 @@ export default function ItemsPage() {
                     value={
                       unitOfMeasure
                     }
-                    onChange={(event) =>
+                    onChange={(
+                      event,
+                    ) =>
                       setUnitOfMeasure(
                         event.target
                           .value,
@@ -2166,8 +2478,12 @@ export default function ItemsPage() {
                   required
                 >
                   <input
-                    value={unitPrice}
-                    onChange={(event) =>
+                    value={
+                      unitPrice
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setUnitPrice(
                         event.target
                           .value,
@@ -2183,8 +2499,12 @@ export default function ItemsPage() {
                   label="SELLING PRICE"
                 >
                   <input
-                    value={sellingPrice}
-                    onChange={(event) =>
+                    value={
+                      sellingPrice
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setSellingPrice(
                         event.target
                           .value,
@@ -2204,7 +2524,9 @@ export default function ItemsPage() {
                     value={
                       reorderLevel
                     }
-                    onChange={(event) =>
+                    onChange={(
+                      event,
+                    ) =>
                       setReorderLevel(
                         event.target
                           .value,
@@ -2219,8 +2541,12 @@ export default function ItemsPage() {
                 {editingItem && (
                   <Field label="STATUS">
                     <select
-                      value={status}
-                      onChange={(event) =>
+                      value={
+                        status
+                      }
+                      onChange={(
+                        event,
+                      ) =>
                         setStatus(
                           event.target
                             .value as
@@ -2233,6 +2559,7 @@ export default function ItemsPage() {
                       <option value="active">
                         ACTIVE
                       </option>
+
                       <option value="discontinued">
                         DISCONTINUED
                       </option>
@@ -2247,7 +2574,9 @@ export default function ItemsPage() {
                     value={
                       description
                     }
-                    onChange={(event) =>
+                    onChange={(
+                      event,
+                    ) =>
                       setDescription(
                         event.target
                           .value,
@@ -2276,7 +2605,9 @@ export default function ItemsPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      router.push('/locations')
+                      router.push(
+                        '/locations',
+                      )
                     }
                     className="shrink-0 border border-[#2e4057] px-2.5 py-1.5 font-mono text-[7px] tracking-widest text-[#2e4057] hover:bg-[#2e4057] hover:text-[#f5f0e3]"
                   >
@@ -2286,7 +2617,9 @@ export default function ItemsPage() {
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {locations.map(
-                    (location) => {
+                    (
+                      location,
+                    ) => {
                       const selected =
                         selectedLocationIds.includes(
                           location.id,
@@ -2334,8 +2667,12 @@ export default function ItemsPage() {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <MapPin
-                                size={10}
-                                strokeWidth={1.5}
+                                size={
+                                  10
+                                }
+                                strokeWidth={
+                                  1.5
+                                }
                               />
 
                               <div className="truncate font-mono text-[8px]">
@@ -2396,7 +2733,9 @@ export default function ItemsPage() {
                   onClick={
                     closeForm
                   }
-                  disabled={saving}
+                  disabled={
+                    saving
+                  }
                   className="border border-[#2b2620] px-4 py-2.5 font-mono text-[8px] tracking-widest disabled:opacity-40"
                 >
                   CANCEL
@@ -2404,7 +2743,9 @@ export default function ItemsPage() {
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={
+                    saving
+                  }
                   className="border-2 border-[#2e4057] bg-[#2e4057] px-5 py-2.5 font-mono text-[8px] tracking-widest text-[#f5f0e3] hover:bg-[#c68a2e] hover:text-[#2b2620] disabled:opacity-50"
                 >
                   {saving
@@ -2435,6 +2776,7 @@ function Field({
     <label className="block">
       <div className="mb-1.5 font-mono text-[7px] tracking-widest text-[#5b5346]">
         {label}
+
         {required && (
           <span className="text-[#a63a2e]">
             {' '}

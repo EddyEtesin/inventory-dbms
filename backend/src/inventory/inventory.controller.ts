@@ -1,29 +1,42 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
+
 import { Request } from 'express';
 
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
+
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 
 import { InventoryService } from './inventory.service';
+
 import { ReceiveStockDto } from './dto/receive-stock.dto';
+
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+
 import { IssueStockDto } from './dto/issue-stock.dto';
+
 import { TransferStockDto } from './dto/transfer-stock.dto';
+
 import { OpeningBalanceDto } from './dto/opening-balance.dto';
+
 import { StockHistoryDto } from './dto/stock-history.dto';
+
 import { InventoryActivityDto } from './dto/inventory-activity.dto';
 
 interface AuthenticatedRequest extends Request {
@@ -37,11 +50,15 @@ export class InventoryController {
     private readonly inventoryService: InventoryService,
   ) {}
 
+  // --------------------------------------------------
+  // ITEM INVENTORY
+  // --------------------------------------------------
+
   @Get('items/:itemId')
   @RequirePermissions('item.view')
   getItemInventory(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
+    @Param('itemId') itemId: string,
   ) {
     return this.inventoryService.getItemInventory(
       request.user.orgId,
@@ -53,7 +70,7 @@ export class InventoryController {
   @RequirePermissions('location.view')
   getLocationInventory(
     @Req() request: AuthenticatedRequest,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('locationId') locationId: string,
   ) {
     return this.inventoryService.getLocationInventory(
       request.user.orgId,
@@ -65,8 +82,8 @@ export class InventoryController {
   @RequirePermissions('item.view')
   getBalance(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
   ) {
     return this.inventoryService.getBalance(
       request.user.orgId,
@@ -79,8 +96,8 @@ export class InventoryController {
   @RequirePermissions('item.update')
   initializeBalance(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
   ) {
     return this.inventoryService.getOrCreateBalance(
       request.user.orgId,
@@ -93,8 +110,8 @@ export class InventoryController {
   @RequirePermissions('item.update')
   removeItemLocation(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
   ) {
     return this.inventoryService.removeItemLocation(
       request.user.orgId,
@@ -103,12 +120,16 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // OPENING BALANCE
+  // --------------------------------------------------
+
   @Post('items/:itemId/locations/:locationId/opening-balance')
   @RequirePermissions('stock.receive')
   createOpeningBalance(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
     @Body() dto: OpeningBalanceDto,
   ) {
     return this.inventoryService.createOpeningBalance(
@@ -123,12 +144,34 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // TRANSACTION HISTORY
+  // --------------------------------------------------
+
+  @Get('items/:itemId/transactions')
+  @RequirePermissions('stock.view_history')
+  getItemTransactions(
+    @Req() request: AuthenticatedRequest,
+    @Param(
+      'itemId',
+      new ParseUUIDPipe({ version: '4' }),
+    )
+    itemId: string,
+    @Query() filters: StockHistoryDto,
+  ) {
+    return this.inventoryService.getItemTransactions(
+      request.user.orgId,
+      itemId,
+      filters,
+    );
+  }
+
   @Get('items/:itemId/locations/:locationId/transactions')
   @RequirePermissions('stock.view_history')
   getItemLocationTransactions(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
     @Query() filters: StockHistoryDto,
   ) {
     return this.inventoryService.getItemLocationTransactions(
@@ -139,12 +182,16 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // STOCK OPERATIONS
+  // --------------------------------------------------
+
   @Post('items/:itemId/locations/:locationId/receive')
   @RequirePermissions('stock.receive')
   receiveStock(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
     @Body() dto: ReceiveStockDto,
   ) {
     return this.inventoryService.receiveStock(
@@ -163,8 +210,8 @@ export class InventoryController {
   @RequirePermissions('stock.adjust')
   adjustStock(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
     @Body() dto: AdjustStockDto,
   ) {
     return this.inventoryService.adjustStock(
@@ -183,8 +230,8 @@ export class InventoryController {
   @RequirePermissions('stock.issue')
   issueStock(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
-    @Param('locationId', new ParseUUIDPipe({ version: '4' })) locationId: string,
+    @Param('itemId') itemId: string,
+    @Param('locationId') locationId: string,
     @Body() dto: IssueStockDto,
   ) {
     return this.inventoryService.issueStock(
@@ -203,7 +250,7 @@ export class InventoryController {
   @RequirePermissions('stock.transfer')
   transferStock(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
+    @Param('itemId') itemId: string,
     @Body() dto: TransferStockDto,
   ) {
     return this.inventoryService.transferStock(
@@ -219,6 +266,31 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // STOCK MOVEMENT
+  // --------------------------------------------------
+
+  @Get('movement-trend')
+  @RequirePermissions('item.view')
+  getStockMovementTrend(
+    @Req() request: AuthenticatedRequest,
+    @Query(
+      'days',
+      new DefaultValuePipe(30),
+      ParseIntPipe,
+    )
+    days: number,
+  ) {
+    return this.inventoryService.getStockMovementTrend(
+      request.user.orgId,
+      days,
+    );
+  }
+
+  // --------------------------------------------------
+  // RECONCILIATION
+  // --------------------------------------------------
+
   @Get('reconcile')
   @RequirePermissions('item.view')
   reconcileInventory(
@@ -229,11 +301,15 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // INVENTORY SUMMARY
+  // --------------------------------------------------
+
   @Get('items/:itemId/summary')
   @RequirePermissions('item.view')
   getInventorySummary(
     @Req() request: AuthenticatedRequest,
-    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
+    @Param('itemId') itemId: string,
   ) {
     return this.inventoryService.getInventorySummary(
       request.user.orgId,
@@ -250,6 +326,10 @@ export class InventoryController {
       request.user.orgId,
     );
   }
+
+  // --------------------------------------------------
+  // STOCK ALERTS / ANALYSIS
+  // --------------------------------------------------
 
   @Get('low-stock')
   @RequirePermissions('item.view')
@@ -316,38 +396,30 @@ export class InventoryController {
     );
   }
 
+  // --------------------------------------------------
+  // RECENT ACTIVITY
+  // --------------------------------------------------
+
   @Get('activity/recent')
   @RequirePermissions('item.view')
   getRecentInventoryActivity(
     @Req() request: AuthenticatedRequest,
-    @Query('limit') limit?: string,
+    @Query(
+      'limit',
+      new DefaultValuePipe(50),
+      ParseIntPipe,
+    )
+    limit: number,
   ) {
-
-    const parsedLimit = limit
-    ? Number(limit)
-    : 20;
-
     return this.inventoryService.getRecentInventoryActivity(
       request.user.orgId,
-      Number.isFinite(parsedLimit)
-      ? parsedLimit
-      : 20,
+      limit,
     );
   }
 
-  @Get('movement-trend')
-  @RequirePermissions('item.view')
-  getStockMovementTrend(
-    @Req() request: AuthenticatedRequest,
-    @Query('days') days?: string,
-  ) {
-    const parsedDays = days ? Number(days) : 30;
-
-    return this.inventoryService.getStockMovementTrend(
-      request.user.orgId,
-      Number.isFinite(parsedDays) ? parsedDays : 30,
-    );
-  }
+  // --------------------------------------------------
+  // INVENTORY REGISTER
+  // --------------------------------------------------
 
   @Get('register')
   @RequirePermissions('item.view')

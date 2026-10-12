@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import {
+  usePathname,
+  useRouter,
+} from 'next/navigation';
 
 import {
   BarChart3,
@@ -76,40 +79,55 @@ export default function InventorySidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 hidden h-screen flex-col bg-[#2e4057] text-[#f5f0e3] md:flex ${
+      className={`fixed left-0 top-0 z-40 hidden h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[2px_0_14px_rgba(23,23,23,0.03)] md:flex ${
         collapsed
           ? 'w-[68px]'
           : 'w-[205px]'
       }`}
     >
       {/* BRAND */}
-      <div className="flex min-h-[72px] items-center border-b border-[#f5f0e3]/15 px-4">
+
+      <div
+        className={`flex min-h-[72px] items-center border-b border-[var(--border)] ${
+          collapsed
+            ? 'justify-center px-2'
+            : 'px-4'
+        }`}
+      >
         {collapsed ? (
-          <span className="mx-auto font-mono text-lg">
-            IL
+          <span className="font-mono text-[17px] font-medium tracking-[-0.04em] text-[var(--text)]">
+            ST
           </span>
         ) : (
           <div>
-            <div className="font-mono text-[17px] tracking-[0.08em]">
-              INVENTORY
+            <div className="font-sans text-[17px] font-semibold tracking-[-0.025em] text-[var(--text)]">
+              STOCKPILE
             </div>
 
-            <div className="font-mono text-[8px] tracking-[0.18em] text-[#ddd0b8]">
-              LEDGER SYSTEM
+            <div className="mt-1 font-mono text-[8px] tracking-[0.16em] text-[var(--text-muted)]">
+              INVENTORY MANAGEMENT
             </div>
           </div>
         )}
       </div>
 
       {/* NAVIGATION */}
+
       <nav className="flex-1 px-2.5 py-4">
+        {!collapsed && (
+          <div className="mb-3 px-2 font-mono text-[8px] tracking-[0.2em] text-[var(--text-soft)]">
+            WORKSPACE
+          </div>
+        )}
+
         {navItems.map((item) => {
           const Icon = item.icon;
 
           const active =
             item.href === '/'
               ? pathname === '/'
-              : pathname === item.href ||
+              : pathname ===
+                  item.href ||
                 pathname.startsWith(
                   `${item.href}/`,
                 );
@@ -123,10 +141,10 @@ export default function InventorySidebar({
                   ? item.label
                   : undefined
               }
-              className={`mb-1 flex items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest ${
+              className={`group mb-1 flex items-center gap-3 rounded-[10px] px-3 py-2.5 font-mono text-[9px] tracking-[0.08em] transition-colors ${
                 active
-                  ? 'bg-[#c68a2e] text-[#2b2620]'
-                  : 'text-[#f5f0e3] hover:bg-[#f5f0e3]/10'
+                  ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'text-[var(--text-muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--text)]'
               } ${
                 collapsed
                   ? 'justify-center'
@@ -135,11 +153,22 @@ export default function InventorySidebar({
             >
               <Icon
                 size={16}
-                strokeWidth={1.7}
+                strokeWidth={
+                  active ? 2 : 1.7
+                }
+                className="shrink-0"
               />
 
               {!collapsed && (
-                <span>{item.label}</span>
+                <span
+                  className={
+                    active
+                      ? 'font-medium'
+                      : ''
+                  }
+                >
+                  {item.label}
+                </span>
               )}
             </Link>
           );
@@ -147,7 +176,8 @@ export default function InventorySidebar({
       </nav>
 
       {/* SETTINGS + LOGOUT + COLLAPSE */}
-      <div className="border-t border-[#f5f0e3]/15 px-2.5 py-3">
+
+      <div className="border-t border-[var(--border)] px-2.5 py-3">
         <Link
           href="/settings"
           title={
@@ -155,7 +185,7 @@ export default function InventorySidebar({
               ? 'SETTINGS'
               : undefined
           }
-          className={`flex w-full items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest hover:bg-[#f5f0e3]/10 ${
+          className={`flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 font-mono text-[9px] tracking-[0.08em] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--text)] ${
             collapsed
               ? 'justify-center'
               : ''
@@ -179,7 +209,7 @@ export default function InventorySidebar({
               ? 'LOG OUT'
               : undefined
           }
-          className={`mt-1 flex w-full items-center gap-3 px-3 py-2.5 font-mono text-[9px] tracking-widest text-[#f5f0e3] hover:bg-[#a63a2e] hover:text-[#f5f0e3] ${
+          className={`mt-1 flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 font-mono text-[9px] tracking-[0.08em] text-[var(--text-muted)] transition-colors hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] ${
             collapsed
               ? 'justify-center'
               : ''
@@ -198,7 +228,7 @@ export default function InventorySidebar({
         <button
           type="button"
           onClick={onToggle}
-          className="mt-2 flex w-full justify-center border border-[#f5f0e3]/20 py-1.5"
+          className={`mt-3 flex w-full items-center justify-center rounded-[10px] border border-[var(--border)] py-1.5 text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-soft)] hover:text-[var(--text)]`}
           title={
             collapsed
               ? 'Expand navigation'
@@ -206,9 +236,15 @@ export default function InventorySidebar({
           }
         >
           {collapsed ? (
-            <ChevronRight size={15} />
+            <ChevronRight
+              size={15}
+              strokeWidth={1.7}
+            />
           ) : (
-            <ChevronLeft size={15} />
+            <ChevronLeft
+              size={15}
+              strokeWidth={1.7}
+            />
           )}
         </button>
       </div>

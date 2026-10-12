@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, type ElementType, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ElementType,
+} from 'react';
 
 import {
   ArrowDownToLine,
   ArrowLeftRight,
   ArrowUpFromLine,
+  ChevronDown,
   FileText,
   X,
 } from 'lucide-react';
@@ -34,7 +40,6 @@ type ItemDrawerProps = {
   targetLocationId: string;
 
   quantity: string;
-  reference: string;
   notes: string;
 
   submitting: boolean;
@@ -42,6 +47,7 @@ type ItemDrawerProps = {
 
   transactions: Transaction[];
   transactionLoading: boolean;
+  transactionLocationId: string | null;
   transactionPage: number;
   transactionTotalPages: number;
   hasNextTransactionPage: boolean;
@@ -49,25 +55,37 @@ type ItemDrawerProps = {
 
   onClose: () => void;
 
-  onLocationSelect: (locationId: string) => void;
+  onViewLocationTransactions: (
+    locationId: string,
+  ) => void;
 
-  onStartOperation: (operation: Operation) => void;
+  onViewAllTransactions: () => void;
+
+  onStartOperation: (
+    operation: Operation,
+  ) => void;
 
   onOperationSubmit: (
-    event: FormEvent<HTMLFormElement>,
+    event: React.FormEvent<HTMLFormElement>,
   ) => void;
 
   onOperationCancel: () => void;
 
-  onOperationLocationChange: (locationId: string) => void;
+  onOperationLocationChange: (
+    locationId: string,
+  ) => void;
 
-  onTargetLocationChange: (locationId: string) => void;
+  onTargetLocationChange: (
+    locationId: string,
+  ) => void;
 
-  onQuantityChange: (quantity: string) => void;
+  onQuantityChange: (
+    quantity: string,
+  ) => void;
 
-  onReferenceChange: (reference: string) => void;
-
-  onNotesChange: (notes: string) => void;
+  onNotesChange: (
+    notes: string,
+  ) => void;
 
   onPreviousPage: () => void;
   onNextPage: () => void;
@@ -82,12 +100,10 @@ export default function ItemDrawer({
   organizationLocations,
 
   operation,
-
   operationLocationId,
   targetLocationId,
 
   quantity,
-  reference,
   notes,
 
   submitting,
@@ -95,6 +111,7 @@ export default function ItemDrawer({
 
   transactions,
   transactionLoading,
+  transactionLocationId,
   transactionPage,
   transactionTotalPages,
   hasNextTransactionPage,
@@ -102,22 +119,17 @@ export default function ItemDrawer({
 
   onClose,
 
-  onLocationSelect,
+  onViewLocationTransactions,
+  onViewAllTransactions,
 
   onStartOperation,
-
   onOperationSubmit,
-
   onOperationCancel,
 
   onOperationLocationChange,
-
   onTargetLocationChange,
 
   onQuantityChange,
-
-  onReferenceChange,
-
   onNotesChange,
 
   onPreviousPage,
@@ -127,6 +139,12 @@ export default function ItemDrawer({
   onArchive,
   itemArchived = false,
 }: ItemDrawerProps) {
+  /*
+   * --------------------------------------------------
+   * DRAWER SCROLL LOCK
+   * --------------------------------------------------
+   */
+
   useEffect(() => {
     if (!selectedItem) {
       return;
@@ -139,7 +157,8 @@ export default function ItemDrawer({
       document.documentElement.style.overflow;
 
     document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.overflow =
+      'hidden';
 
     return () => {
       document.body.style.overflow =
@@ -149,6 +168,35 @@ export default function ItemDrawer({
         previousHtmlOverflow;
     };
   }, [selectedItem]);
+
+  /*
+   * --------------------------------------------------
+   * OPERATION LOCATION DATA
+   * --------------------------------------------------
+   */
+
+  const selectedOperationLocation =
+    selectedItem?.locationBreakdown.find(
+      (location) =>
+        location.locationId ===
+        operationLocationId,
+    );
+
+  const selectedTargetLocation =
+    selectedItem?.locationBreakdown.find(
+      (location) =>
+        location.locationId ===
+        targetLocationId,
+    );
+
+  const selectedTargetQuantity =
+    selectedTargetLocation?.quantity ?? 0;
+
+  /*
+   * --------------------------------------------------
+   * RENDER
+   * --------------------------------------------------
+   */
 
   if (!selectedItem) {
     return null;
@@ -167,6 +215,7 @@ export default function ItemDrawer({
       {/* DRAWER */}
       <aside className="fixed right-0 top-0 z-50 h-screen w-full max-w-[470px] overflow-y-auto border-l border-[#c8bda5] bg-[#f5f0e3] shadow-[-8px_0_24px_rgba(43,38,32,0.12)]">
         <div className="p-5">
+
           {/* CLOSE */}
           <button
             type="button"
@@ -239,32 +288,35 @@ export default function ItemDrawer({
             </div>
 
             <div className="mt-2 overflow-hidden border border-[#c8bda5]">
-              <div className="grid grid-cols-[1fr_65px] border-b border-[#c8bda5] bg-[#ddd0b8] px-3 py-2 font-mono text-[7px] tracking-widest text-[#5b5346]">
+              {/* HEADER */}
+              <div className="grid grid-cols-[1fr_65px] border-b border-[#c8bda5] bg-[#ddd0b8] px-3 py-2 font-mono text-[7px] font-bold tracking-widest text-[#5b5346]">
                 <span>LOCATION</span>
                 <span>QTY</span>
               </div>
 
-              {selectedItem.locationBreakdown.map(
-                (location) => (
-                  <button
-                    key={location.id}
-                    type="button"
-                    onClick={() =>
-                      onLocationSelect(
-                        location.locationId,
-                      )
-                    }
-                    className="grid w-full grid-cols-[1fr_65px] border-b border-dashed border-[#d0c4aa] px-3 py-2.5 text-left font-mono text-[8px] last:border-b-0 hover:bg-[#eae2ce]"
-                  >
-                    <span>
-                      {location.locationName}
-                    </span>
+              {/* LOCATIONS */}
+              {selectedItem.locationBreakdown
+                .length === 0 ? (
+                <div className="px-3 py-3 font-mono text-[8px] italic text-[#5b5346]">
+                  NO LOCATION STOCK RECORDS
+                </div>
+              ) : (
+                selectedItem.locationBreakdown.map(
+                  (location) => (
+                    <div
+                      key={location.id}
+                      className="grid grid-cols-[1fr_65px] items-center border-b border-dashed border-[#d0c4aa] px-3 py-2.5 font-mono text-[8px] last:border-b-0 hover:bg-[#eae2ce]"
+                    >
+                      <span className="min-w-0 truncate">
+                        {location.locationName}
+                      </span>
 
-                    <span>
-                      {location.quantity}
-                    </span>
-                  </button>
-                ),
+                      <span>
+                        {location.quantity}
+                      </span>
+                    </div>
+                  ),
+                )
               )}
             </div>
           </div>
@@ -280,7 +332,9 @@ export default function ItemDrawer({
                 icon={ArrowDownToLine}
                 label="RECEIVE"
                 onClick={() =>
-                  onStartOperation('receive')
+                  onStartOperation(
+                    'receive',
+                  )
                 }
               />
 
@@ -288,7 +342,9 @@ export default function ItemDrawer({
                 icon={ArrowUpFromLine}
                 label="ISSUE"
                 onClick={() =>
-                  onStartOperation('issue')
+                  onStartOperation(
+                    'issue',
+                  )
                 }
               />
 
@@ -296,7 +352,9 @@ export default function ItemDrawer({
                 icon={FileText}
                 label="ADJUST"
                 onClick={() =>
-                  onStartOperation('adjust')
+                  onStartOperation(
+                    'adjust',
+                  )
                 }
               />
 
@@ -304,7 +362,9 @@ export default function ItemDrawer({
                 icon={ArrowLeftRight}
                 label="TRANSFER"
                 onClick={() =>
-                  onStartOperation('transfer')
+                  onStartOperation(
+                    'transfer',
+                  )
                 }
               />
             </div>
@@ -323,11 +383,14 @@ export default function ItemDrawer({
                   </div>
 
                   <h3 className="mt-1 font-mono text-[15px]">
-                    {operation === 'receive'
+                    {operation ===
+                    'receive'
                       ? 'RECEIVE STOCK'
-                      : operation === 'issue'
+                      : operation ===
+                          'issue'
                         ? 'ISSUE STOCK'
-                        : operation === 'adjust'
+                        : operation ===
+                            'adjust'
                           ? 'ADJUST STOCK'
                           : 'TRANSFER STOCK'}
                   </h3>
@@ -335,36 +398,47 @@ export default function ItemDrawer({
 
                 <button
                   type="button"
-                  onClick={onOperationCancel}
+                  onClick={
+                    onOperationCancel
+                  }
                   className="font-mono text-[8px] text-[#5b5346] underline underline-offset-2 hover:text-[#2b2620]"
                 >
                   CANCEL
                 </button>
               </div>
 
-              {/* LOCATION */}
+              {/* SOURCE / OPERATION LOCATION */}
               <div className="mt-4">
-                <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  {operation === 'transfer'
-                    ? 'FROM LOCATION'
-                    : 'LOCATION'}
-                </label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="font-mono text-[8px] tracking-widest text-[#5b5346]">
+                    {operation ===
+                    'transfer'
+                      ? 'FROM LOCATION'
+                      : 'LOCATION'}
+                  </label>
 
-                <select
-                  value={operationLocationId}
-                  onChange={(event) =>
-                    onOperationLocationChange(
-                      event.target.value,
-                    )
+                  {selectedOperationLocation && (
+                    <span className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                      STOCK{' '}
+                      {
+                        selectedOperationLocation.quantity
+                      }{' '}
+                      {
+                        selectedItem.unitOfMeasure
+                      }
+                    </span>
+                  )}
+                </div>
+
+                <LocationDropdown
+                  value={
+                    operationLocationId
                   }
-                  className="w-full border-0 border-b border-[#b7a87e] bg-transparent px-1 py-2 font-mono text-[10px] outline-none focus:border-[#2e4057]"
-                  required
-                >
-                  <option value="">
-                    SELECT LOCATION
-                  </option>
-
-                  {selectedItem.locationBreakdown.map(
+                  onChange={
+                    onOperationLocationChange
+                  }
+                  placeholder="SELECT LOCATION"
+                  options={selectedItem.locationBreakdown.map(
                     (location) => {
                       const organizationLocation =
                         organizationLocations.find(
@@ -373,78 +447,104 @@ export default function ItemDrawer({
                             location.locationId,
                         );
 
-                      const isInactive =
-                        organizationLocation?.status !==
-                        'active';
-
-                      return (
-                        <option
-                          key={location.locationId}
-                          value={location.locationId}
-                          disabled={isInactive}
-                        >
-                          {location.locationName}
-                          {isInactive
-                            ? ' · INACTIVE'
-                            : ''}
-                        </option>
-                      );
+                      return {
+                        id:
+                          location.locationId,
+                        name:
+                          location.locationName,
+                        quantity:
+                          location.quantity,
+                        disabled:
+                          organizationLocation?.status !==
+                          'active',
+                        suffix:
+                          organizationLocation?.status !==
+                          'active'
+                            ? 'INACTIVE'
+                            : undefined,
+                      };
                     },
                   )}
-                </select>
+                  unit={
+                    selectedItem.unitOfMeasure
+                  }
+                />
               </div>
 
               {/* DESTINATION */}
-              {operation === 'transfer' && (
+              {operation ===
+                'transfer' && (
                 <div className="mt-4">
-                  <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                    TO LOCATION
-                  </label>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="font-mono text-[8px] tracking-widest text-[#5b5346]">
+                      TO LOCATION
+                    </label>
 
-                  <select
-                    value={targetLocationId}
-                    onChange={(event) =>
-                      onTargetLocationChange(
-                        event.target.value,
-                      )
+                    <span className="font-mono text-[7px] tracking-widest text-[#5b5346]">
+                      STOCK{' '}
+                      {
+                        selectedTargetQuantity
+                      }{' '}
+                      {
+                        selectedItem.unitOfMeasure
+                      }
+                    </span>
+                  </div>
+
+                  <LocationDropdown
+                    value={
+                      targetLocationId
                     }
-                    className="w-full border-0 border-b border-[#b7a87e] bg-transparent px-1 py-2 font-mono text-[10px] outline-none focus:border-[#2e4057]"
-                    required
-                  >
-                    <option value="">
-                      SELECT LOCATION
-                    </option>
-
-                    {organizationLocations
+                    onChange={
+                      onTargetLocationChange
+                    }
+                    placeholder="SELECT DESTINATION"
+                    options={organizationLocations
                       .filter(
                         (location) =>
                           location.id !==
                           operationLocationId,
                       )
-                      .map((location) => (
-                        <option
-                          key={location.id}
-                          value={location.id}
-                          disabled={
-                            location.status !==
-                            'active'
-                          }
-                        >
-                          {location.name}
-                          {location.status !==
-                          'active'
-                            ? ' · INACTIVE'
-                            : ''}
-                        </option>
-                      ))}
-                  </select>
+                      .map(
+                        (location) => {
+                          const itemLocation =
+                            selectedItem.locationBreakdown.find(
+                              (entry) =>
+                                entry.locationId ===
+                                location.id,
+                            );
+
+                          return {
+                            id:
+                              location.id,
+                            name:
+                              location.name,
+                            quantity:
+                              itemLocation?.quantity ??
+                              0,
+                            disabled:
+                              location.status !==
+                              'active',
+                            suffix:
+                              location.status !==
+                              'active'
+                                ? 'INACTIVE'
+                                : undefined,
+                          };
+                        },
+                      )}
+                    unit={
+                      selectedItem.unitOfMeasure
+                    }
+                  />
                 </div>
               )}
 
               {/* QUANTITY */}
               <div className="mt-4">
                 <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  {operation === 'adjust'
+                  {operation ===
+                  'adjust'
                     ? 'ADJUSTMENT QUANTITY'
                     : 'QUANTITY'}
                 </label>
@@ -452,7 +552,8 @@ export default function ItemDrawer({
                 <input
                   type="number"
                   min={
-                    operation === 'adjust'
+                    operation ===
+                    'adjust'
                       ? undefined
                       : '1'
                   }
@@ -464,7 +565,8 @@ export default function ItemDrawer({
                     )
                   }
                   placeholder={
-                    operation === 'adjust'
+                    operation ===
+                    'adjust'
                       ? 'e.g. -10 or +10'
                       : '0'
                   }
@@ -472,36 +574,14 @@ export default function ItemDrawer({
                   required
                 />
 
-                {operation === 'adjust' && (
+                {operation ===
+                  'adjust' && (
                   <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                    Use a negative number to reduce
+                    Use a negative
+                    number to reduce
                     stock.
                   </div>
                 )}
-              </div>
-
-              {/* REFERENCE */}
-              <div className="mt-4">
-                <label className="mb-1 block font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  REFERENCE
-                </label>
-
-                <input
-                  type="text"
-                  value={reference}
-                  onChange={(event) =>
-                    onReferenceChange(
-                      event.target.value,
-                    )
-                  }
-                  className="w-full border-0 border-b border-[#b7a87e] bg-transparent px-1 py-2 font-mono text-[10px] outline-none focus:border-[#2e4057]"
-                  placeholder="e.g. PO-2026-0042"
-                />
-
-                <div className="mt-1 font-mono text-[7px] text-[#5b5346]">
-                  Optional purchase order, request,
-                  issue, or other reference.
-                </div>
               </div>
 
               {/* NOTES */}
@@ -545,7 +625,8 @@ export default function ItemDrawer({
           )}
 
           {/* ITEM MANAGEMENT */}
-          {(onEdit || onArchive) && (
+          {(onEdit ||
+            onArchive) && (
             <div className="mt-5 border-t border-dashed border-[#d0c4aa] pt-4">
               <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
                 ITEM MANAGEMENT
@@ -562,15 +643,18 @@ export default function ItemDrawer({
                   </button>
                 )}
 
-                {onArchive && !itemArchived && (
-                  <button
-                    type="button"
-                    onClick={onArchive}
-                    className="border border-[#c57b71] px-3 py-2.5 font-mono text-[8px] tracking-widest text-[#a63a2e] hover:bg-[#a63a2e]/5"
-                  >
-                    ARCHIVE ITEM
-                  </button>
-                )}
+                {onArchive &&
+                  !itemArchived && (
+                    <button
+                      type="button"
+                      onClick={
+                        onArchive
+                      }
+                      className="border border-[#c57b71] px-3 py-2.5 font-mono text-[8px] tracking-widest text-[#a63a2e] hover:bg-[#a63a2e]/5"
+                    >
+                      ARCHIVE ITEM
+                    </button>
+                  )}
               </div>
             </div>
           )}
@@ -580,7 +664,7 @@ export default function ItemDrawer({
             <div className="flex items-end justify-between">
               <div>
                 <div className="font-mono text-[8px] tracking-widest text-[#5b5346]">
-                  LOCATION LEDGER
+                  TRANSACTION HISTORY
                 </div>
 
                 <h3 className="mt-1 font-mono text-[15px]">
@@ -589,40 +673,76 @@ export default function ItemDrawer({
               </div>
 
               <div className="font-mono text-[7px] text-[#5b5346]">
-                {operationLocationId
-                  ? `PAGE ${transactionPage} OF ${transactionTotalPages}`
-                  : ''}
+                PAGE {transactionPage} OF{' '}
+                {transactionTotalPages}
               </div>
             </div>
 
-            {!operationLocationId ? (
-              <div className="mt-3 border border-dashed border-[#c8bda5] p-4 text-center font-mono text-[8px] italic text-[#5b5346]">
-                Select a location to view its
-                transaction history.
-              </div>
-            ) : transactionLoading ? (
+            {/* HISTORY DROPDOWN */}
+            <div className="mt-3">
+              <HistoryDropdown
+                value={
+                  transactionLocationId
+                }
+                selectedLabel={
+                  transactionLocationId
+                    ? getLocationName(
+                        selectedItem,
+                        transactionLocationId,
+                      )
+                    : 'ALL LOCATIONS'
+                }
+                locations={selectedItem.locationBreakdown.map(
+                  (location) => ({
+                    id:
+                      location.locationId,
+                    name:
+                      location.locationName,
+                  }),
+                )}
+                onSelect={(locationId) => {
+                  if (
+                    locationId ===
+                    null
+                  ) {
+                    onViewAllTransactions();
+                  } else {
+                    onViewLocationTransactions(
+                      locationId,
+                    );
+                  }
+                }}
+              />
+            </div>
+
+            {/* LOADING */}
+            {transactionLoading ? (
               <div className="mt-3 p-4 text-center font-mono text-[8px] text-[#5b5346]">
                 LOADING TRANSACTIONS...
               </div>
-            ) : transactions.length === 0 ? (
+            ) : transactions.length ===
+              0 ? (
               <div className="mt-3 border border-dashed border-[#c8bda5] p-4 text-center font-mono text-[8px] italic text-[#5b5346]">
                 No transactions found.
               </div>
             ) : (
               <>
+                {/* TRANSACTION TABLE */}
                 <div className="mt-3 overflow-hidden border border-[#c8bda5]">
-                  <div className="grid grid-cols-[80px_75px_65px_minmax(0,1fr)] gap-2 border-b border-[#c8bda5] bg-[#ddd0b8] px-3 py-2 font-mono text-[7px] tracking-widest text-[#5b5346]">
+                  <div className="grid grid-cols-[82px_minmax(0,1fr)_68px_44px] gap-2 border-b border-[#c8bda5] bg-[#ddd0b8] px-3 py-2 font-mono text-[7px] font-bold tracking-widest text-[#5b5346]">
                     <span>DATE</span>
+                    <span>LOCATION</span>
                     <span>ACTION</span>
                     <span>QTY</span>
-                    <span>REFERENCE</span>
                   </div>
 
                   {transactions.map(
                     (transaction) => (
                       <div
-                        key={transaction.id}
-                        className="grid grid-cols-[80px_75px_65px_minmax(0,1fr)] gap-2 border-b border-dashed border-[#d0c4aa] px-3 py-2 font-mono text-[7px] last:border-b-0"
+                        key={
+                          transaction.id
+                        }
+                        className="grid grid-cols-[82px_minmax(0,1fr)_68px_44px] gap-2 border-b border-dashed border-[#d0c4aa] px-3 py-2.5 font-mono text-[7px] last:border-b-0"
                       >
                         <span className="text-[#5b5346]">
                           {formatDate(
@@ -630,7 +750,32 @@ export default function ItemDrawer({
                           )}
                         </span>
 
-                        <span>
+                        <span
+                          className="truncate"
+                          title={
+                            transaction.location?.name ??
+                            getLocationName(
+                              selectedItem,
+                              transactionLocationId ??
+                                selectedItem
+                                  .locationBreakdown[0]
+                                  ?.locationId ??
+                                '',
+                            )
+                          }
+                        >
+                          {transaction.location?.name ??
+                            getLocationName(
+                              selectedItem,
+                              transactionLocationId ??
+                                selectedItem
+                                  .locationBreakdown[0]
+                                  ?.locationId ??
+                                '',
+                            )}
+                        </span>
+
+                        <span className="truncate">
                           {formatAction(
                             transaction.txnType,
                           )}
@@ -638,32 +783,26 @@ export default function ItemDrawer({
 
                         <span
                           className={
-                            transaction.quantity > 0
+                            transaction.quantity >
+                            0
                               ? 'text-[#3d6b4f]'
                               : 'text-[#a63a2e]'
                           }
                         >
-                          {transaction.quantity > 0
+                          {transaction.quantity >
+                          0
                             ? '+'
                             : ''}
-                          {transaction.quantity}
-                        </span>
-
-                        <span
-                          className="truncate text-[#2e4057]"
-                          title={
-                            transaction.reference ??
-                            'No reference'
+                          {
+                            transaction.quantity
                           }
-                        >
-                          {transaction.reference ??
-                            '—'}
                         </span>
                       </div>
                     ),
                   )}
                 </div>
 
+                {/* PAGINATION */}
                 <div className="mt-2 flex justify-between">
                   <button
                     type="button"
@@ -671,7 +810,9 @@ export default function ItemDrawer({
                       !hasPreviousTransactionPage ||
                       transactionLoading
                     }
-                    onClick={onPreviousPage}
+                    onClick={
+                      onPreviousPage
+                    }
                     className="border border-[#b7a87e] px-2 py-1 font-mono text-[7px] text-[#2e4057] disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     ← PREVIOUS
@@ -683,7 +824,9 @@ export default function ItemDrawer({
                       !hasNextTransactionPage ||
                       transactionLoading
                     }
-                    onClick={onNextPage}
+                    onClick={
+                      onNextPage
+                    }
                     className="border border-[#b7a87e] px-2 py-1 font-mono text-[7px] text-[#2e4057] disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     NEXT →
@@ -697,6 +840,382 @@ export default function ItemDrawer({
     </>
   );
 }
+
+/*
+ * =========================================================
+ * HISTORY DROPDOWN
+ * =========================================================
+ */
+
+function HistoryDropdown({
+  value,
+  selectedLabel,
+  locations,
+  onSelect,
+}: {
+  value: string | null;
+  selectedLabel: string;
+  locations: {
+    id: string;
+    name: string;
+  }[];
+  onSelect: (
+    locationId: string | null,
+  ) => void;
+}) {
+  const [
+    open,
+    setOpen,
+  ] = useState(false);
+
+  const rootRef =
+    useRef<HTMLDivElement>(
+      null,
+    );
+
+  useEffect(() => {
+    function handlePointerDown(
+      event: MouseEvent,
+    ) {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(
+          event.target as Node,
+        )
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ) {
+      if (
+        event.key === 'Escape'
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      'mousedown',
+      handlePointerDown,
+    );
+
+    document.addEventListener(
+      'keydown',
+      handleKeyDown,
+    );
+
+    return () => {
+      document.removeEventListener(
+        'mousedown',
+        handlePointerDown,
+      );
+
+      document.removeEventListener(
+        'keydown',
+        handleKeyDown,
+      );
+    };
+  }, []);
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={() =>
+          setOpen(
+            (current) => !current,
+          )
+        }
+        className="flex w-full items-center justify-between gap-3 border border-[#b7a87e] bg-[#f5f0e3] px-3 py-2.5 text-left font-mono text-[8px] text-[#2b2620] hover:border-[#2e4057]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 truncate tracking-widest">
+          {selectedLabel}
+        </span>
+
+        <ChevronDown
+          size={13}
+          strokeWidth={1.7}
+          className={`shrink-0 text-[#5b5346] transition-transform ${
+            open
+              ? 'rotate-180'
+              : ''
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_8px_20px_rgba(43,38,32,0.14)]">
+          <button
+            type="button"
+            onClick={() => {
+              onSelect(null);
+              setOpen(false);
+            }}
+            className={`flex w-full border-b border-dashed border-[#d0c4aa] px-3 py-2.5 text-left font-mono text-[8px] ${
+              value === null
+                ? 'bg-[#ddd0b8] text-[#2e4057]'
+                : 'text-[#2b2620] hover:bg-[#eae2ce]'
+            }`}
+          >
+            ALL LOCATIONS
+          </button>
+
+          <div className="max-h-56 overflow-y-auto">
+            {locations.length ===
+            0 ? (
+              <div className="px-3 py-3 font-mono text-[8px] text-[#5b5346]">
+                NO LOCATIONS
+              </div>
+            ) : (
+              locations.map(
+                (location) => (
+                  <button
+                    key={
+                      location.id
+                    }
+                    type="button"
+                    onClick={() => {
+                      onSelect(
+                        location.id,
+                      );
+
+                      setOpen(false);
+                    }}
+                    className={`flex w-full border-b border-dashed border-[#d0c4aa] px-3 py-2.5 text-left font-mono text-[8px] last:border-b-0 ${
+                      value ===
+                      location.id
+                        ? 'bg-[#ddd0b8] text-[#2e4057]'
+                        : 'text-[#2b2620] hover:bg-[#eae2ce]'
+                    }`}
+                  >
+                    {location.name}
+                  </button>
+                ),
+              )
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * =========================================================
+ * OPERATION LOCATION DROPDOWN
+ * =========================================================
+ */
+
+function LocationDropdown({
+  value,
+  onChange,
+  options,
+  placeholder,
+  unit,
+}: {
+  value: string;
+
+  onChange: (
+    value: string,
+  ) => void;
+
+  options: {
+    id: string;
+    name: string;
+    quantity: number;
+    disabled?: boolean;
+    suffix?: string;
+  }[];
+
+  placeholder: string;
+
+  unit: string;
+}) {
+  const [
+    open,
+    setOpen,
+  ] = useState(false);
+
+  const rootRef =
+    useRef<HTMLDivElement>(
+      null,
+    );
+
+  useEffect(() => {
+    function handlePointerDown(
+      event: MouseEvent,
+    ) {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(
+          event.target as Node,
+        )
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ) {
+      if (
+        event.key === 'Escape'
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      'mousedown',
+      handlePointerDown,
+    );
+
+    document.addEventListener(
+      'keydown',
+      handleKeyDown,
+    );
+
+    return () => {
+      document.removeEventListener(
+        'mousedown',
+        handlePointerDown,
+      );
+
+      document.removeEventListener(
+        'keydown',
+        handleKeyDown,
+      );
+    };
+  }, []);
+
+  const selected =
+    options.find(
+      (option) =>
+        option.id === value,
+    ) ?? null;
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={() =>
+          setOpen(
+            (current) => !current,
+          )
+        }
+        className="flex w-full items-center justify-between gap-3 border border-[#b7a87e] bg-[#f5f0e3] px-3 py-2.5 text-left hover:border-[#2e4057]"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 truncate font-mono text-[9px] text-[#2b2620]">
+          {selected
+            ? selected.name
+            : placeholder}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-2">
+          {selected && (
+            <span className="font-mono text-[8px] tracking-wide text-[#5b5346]">
+              {selected.quantity}{' '}
+              {unit}
+            </span>
+          )}
+
+          <ChevronDown
+            size={13}
+            strokeWidth={1.7}
+            className={`text-[#5b5346] transition-transform ${
+              open
+                ? 'rotate-180'
+                : ''
+            }`}
+          />
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-[80] mt-1 border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_8px_20px_rgba(43,38,32,0.14)]">
+          <div className="max-h-56 overflow-y-auto">
+            {options.length ===
+            0 ? (
+              <div className="px-3 py-2.5 font-mono text-[8px] text-[#5b5346]">
+                NO LOCATIONS
+                AVAILABLE
+              </div>
+            ) : (
+              options.map(
+                (option) => (
+                  <button
+                    key={
+                      option.id
+                    }
+                    type="button"
+                    disabled={
+                      option.disabled
+                    }
+                    onClick={() => {
+                      if (
+                        option.disabled
+                      ) {
+                        return;
+                      }
+
+                      onChange(
+                        option.id,
+                      );
+
+                      setOpen(
+                        false,
+                      );
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left font-mono text-[8px] ${
+                      option.disabled
+                        ? 'cursor-not-allowed opacity-40'
+                        : option.id ===
+                            value
+                          ? 'bg-[#ddd0b8] text-[#2e4057]'
+                          : 'text-[#2b2620] hover:bg-[#eae2ce]'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">
+                      {option.name}
+
+                      {option.suffix
+                        ? ` · ${option.suffix}`
+                        : ''}
+                    </span>
+
+                    <span className="shrink-0 text-[7px] text-[#5b5346]">
+                      {option.quantity}{' '}
+                      {unit}
+                    </span>
+                  </button>
+                ),
+              )
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * =========================================================
+ * DETAIL BOX
+ * =========================================================
+ */
 
 function DetailBox({
   label,
@@ -717,6 +1236,12 @@ function DetailBox({
     </div>
   );
 }
+
+/*
+ * =========================================================
+ * OPERATION BUTTON
+ * =========================================================
+ */
 
 function OperationButton({
   icon: Icon,
@@ -743,8 +1268,36 @@ function OperationButton({
   );
 }
 
-function formatAction(action: string) {
-  switch (action) {
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
+
+function getLocationName(
+  item: RegisterItem | null,
+  locationId: string,
+) {
+  if (!item) {
+    return 'Unknown location';
+  }
+
+  return (
+    item.locationBreakdown.find(
+      (location) =>
+        location.locationId ===
+        locationId,
+    )?.locationName ??
+    'Unknown location'
+  );
+}
+
+function formatAction(
+  action: string,
+) {
+  switch (
+    action.trim().toLowerCase()
+  ) {
     case 'receive':
       return 'RECEIVE';
 
@@ -755,6 +1308,7 @@ function formatAction(action: string) {
       return 'TRANSFER';
 
     case 'adjustment':
+    case 'adjust':
       return 'ADJUST';
 
     case 'opening_balance':
@@ -765,28 +1319,44 @@ function formatAction(action: string) {
   }
 }
 
-function formatDate(timestamp: string) {
-  const date = new Date(timestamp);
+function formatDate(
+  timestamp: string,
+) {
+  const date = new Date(
+    timestamp,
+  );
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return timestamp;
   }
 
-  return new Intl.DateTimeFormat('en-NG', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
+  return new Intl.DateTimeFormat(
+    'en-NG',
+    {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    },
+  )
     .format(date)
     .replace(',', '');
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    maximumFractionDigits: 0,
-  }).format(value);
+function formatCurrency(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    'en-NG',
+    {
+      style: 'currency',
+      currency: 'NGN',
+      maximumFractionDigits: 0,
+    },
+  ).format(value);
 }

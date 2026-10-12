@@ -1,10 +1,12 @@
 'use client';
 
 import {
+  Activity as ActivityIcon,
   ArrowDownToLine,
   ArrowLeftRight,
   ArrowUpFromLine,
   ClipboardPenLine,
+  CircleDot,
   History,
 } from 'lucide-react';
 
@@ -21,7 +23,7 @@ import type {
 } from '../../types/inventory';
 
 const PAGE_SIZE = 5;
-const FETCH_LIMIT = 20;
+const FETCH_LIMIT = 50;
 
 export default function RecentActivity() {
   const [activity, setActivity] =
@@ -102,64 +104,125 @@ export default function RecentActivity() {
     ),
   );
 
-  const visibleActivity = useMemo(() => {
-    const start =
-      (currentPage - 1) *
-      PAGE_SIZE;
+  const visibleActivity =
+    useMemo(() => {
+      const start =
+        (currentPage - 1) *
+        PAGE_SIZE;
 
-    return activity.slice(
-      start,
-      start + PAGE_SIZE,
+      return activity.slice(
+        start,
+        start + PAGE_SIZE,
+      );
+    }, [
+      activity,
+      currentPage,
+    ]);
+
+  const firstVisible =
+    activity.length === 0
+      ? 0
+      : (currentPage - 1) *
+          PAGE_SIZE +
+        1;
+
+  const lastVisible =
+    Math.min(
+      currentPage * PAGE_SIZE,
+      activity.length,
     );
-  }, [
-    activity,
-    currentPage,
-  ]);
 
   useEffect(() => {
-    setCurrentPage((page) =>
-      Math.min(
-        page,
-        totalPages,
-      ),
+    setCurrentPage(
+      (page) =>
+        Math.min(
+          page,
+          totalPages,
+        ),
     );
   }, [totalPages]);
 
+  function goToPreviousPage() {
+    setCurrentPage(
+      (page) =>
+        Math.max(1, page - 1),
+    );
+  }
+
+  function goToNextPage() {
+    setCurrentPage(
+      (page) =>
+        Math.min(
+          totalPages,
+          page + 1,
+        ),
+    );
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <div className="mb-3">
-        <div className="flex items-center gap-2 font-mono text-[7px] tracking-[0.2em] text-[#a63a2e]">
-          <History
-            size={12}
-            strokeWidth={1.7}
-          />
+      <div className="mb-3 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 font-mono text-[9px] tracking-[0.18em] text-[var(--accent)]">
+            <History
+              size={13}
+              strokeWidth={1.7}
+            />
 
-          LIVE INVENTORY FEED
+            LIVE INVENTORY FEED
+          </div>
+
+          <h2 className="mt-1 font-sans text-[23px] font-semibold tracking-[-0.025em]">
+            Recent Activity
+          </h2>
+
+          <p className="mt-1 text-[12px] leading-5 text-[var(--text-muted)]">
+            Latest stock movements
+            across the organization.
+          </p>
         </div>
 
-        <h2 className="mt-1 font-mono text-[20px]">
-          Recent Activity
-        </h2>
-
-        <p className="mt-1 font-mono text-[7px] text-[#5b5346]">
-          Latest stock movements across
-          the organization.
-        </p>
+        {!loading &&
+          !error &&
+          activity.length > 0 && (
+            <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--text-soft)]">
+              Showing {firstVisible}–
+              {lastVisible} of{' '}
+              {activity.length}
+            </div>
+          )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[#b7a87e] bg-[#f5f0e3] shadow-[0_2px_0_#b7a87e]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] bg-[var(--surface)] shadow-[0_6px_18px_rgba(23,23,23,0.045)]">
         {loading ? (
           <ActivityLoading />
         ) : error ? (
           <div className="flex flex-1 items-center justify-center px-5 py-10 text-center">
-            <div className="font-mono text-[8px] text-[#a63a2e]">
-              {error}
+            <div>
+              <CircleDot
+                size={22}
+                strokeWidth={1.4}
+                className="mx-auto text-[var(--danger)]"
+              />
+
+              <div className="mt-3 text-[12px] text-[var(--danger)]">
+                {error}
+              </div>
             </div>
           </div>
         ) : activity.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-5 py-10 text-center">
-            <div className="font-mono text-[8px] text-[#5b5346]">
-              No recent inventory activity.
+            <div>
+              <CircleDot
+                size={22}
+                strokeWidth={1.4}
+                className="mx-auto text-[var(--text-soft)]"
+              />
+
+              <div className="mt-3 text-[12px] text-[var(--text-muted)]">
+                No recent inventory
+                activity.
+              </div>
             </div>
           </div>
         ) : (
@@ -179,51 +242,41 @@ export default function RecentActivity() {
               )}
             </div>
 
-            <div className="flex shrink-0 items-center justify-between border-t border-dashed border-[#b7a87e] bg-[#eae2ce] px-4 py-3">
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    (page) =>
-                      Math.max(
-                        1,
-                        page - 1,
-                      ),
-                  )
-                }
-                disabled={
-                  currentPage === 1
-                }
-                className="font-mono text-[7px] tracking-[0.12em] text-[#2e4057] transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                ‹ PREVIOUS
-              </button>
+            {totalPages > 1 && (
+              <div className="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3">
+                <button
+                  type="button"
+                  onClick={
+                    goToPreviousPage
+                  }
+                  disabled={
+                    currentPage === 1
+                  }
+                  className="min-h-[36px] rounded-[8px] px-3 font-mono text-[9px] tracking-[0.08em] text-[var(--navy)] transition-colors hover:bg-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ← PREVIOUS
+                </button>
 
-              <div className="font-mono text-[7px] tracking-[0.12em] text-[#5b5346]">
-                {currentPage} /{' '}
-                {totalPages}
+                <span className="rounded-[8px] bg-[var(--surface)] px-3 py-2 font-mono text-[9px] font-medium tracking-[0.1em] text-[var(--text-muted)]">
+                  PAGE {currentPage}{' '}
+                  OF {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={
+                    goToNextPage
+                  }
+                  disabled={
+                    currentPage ===
+                    totalPages
+                  }
+                  className="min-h-[36px] rounded-[8px] px-3 font-mono text-[9px] tracking-[0.08em] text-[var(--navy)] transition-colors hover:bg-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  NEXT →
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    (page) =>
-                      Math.min(
-                        totalPages,
-                        page + 1,
-                      ),
-                  )
-                }
-                disabled={
-                  currentPage ===
-                  totalPages
-                }
-                className="font-mono text-[7px] tracking-[0.12em] text-[#2e4057] transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                NEXT ›
-              </button>
-            </div>
+            )}
           </>
         )}
       </div>
@@ -239,15 +292,14 @@ function ActivityRow({
   index: number;
 }) {
   const quantity =
-    event.quantity ?? 0;
-
-  const rawAction =
-    event.action ??
-    event.txnType ??
-    '';
+    Number(event.quantity ?? 0);
 
   const action =
-    formatAction(rawAction);
+    formatAction(
+      event.action ??
+        event.txnType ??
+        '',
+    );
 
   const timestamp =
     formatDateTime(
@@ -260,10 +312,6 @@ function ActivityRow({
     event.item?.name ??
     'Unknown item';
 
-  const itemSku =
-    event.item?.sku ??
-    '—';
-
   const locationName =
     event.location?.name ??
     'Unknown location';
@@ -273,16 +321,19 @@ function ActivityRow({
     event.performedBy?.email ??
     'System';
 
-  const reference =
-    event.reference ??
-    null;
+  const actionIcon =
+    getActionIcon(
+      event.action ??
+        event.txnType ??
+        '',
+    );
 
   const isNegative =
     quantity < 0;
 
   return (
     <div
-      className="border-b border-dashed border-[#b7a87e] px-4 py-4 last:border-b-0 transition-colors hover:bg-[#eee7d8]"
+      className="border-b border-[var(--border)] px-4 py-4 transition-colors last:border-b-0 hover:bg-[var(--surface-soft)]"
       style={{
         animationDelay: `${Math.min(
           index * 55,
@@ -290,102 +341,81 @@ function ActivityRow({
         )}ms`,
       }}
     >
-      <div className="flex items-start gap-3">
-
-        {/* ICON */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
         <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center border ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] ${
             isNegative
-              ? 'border-[#a63a2e]/40 bg-[#a63a2e]/5 text-[#a63a2e]'
-              : 'border-[#3d6b4f]/40 bg-[#3d6b4f]/5 text-[#3d6b4f]'
+              ? 'bg-[var(--danger-soft)] text-[var(--danger)]'
+              : 'bg-[var(--success-soft)] text-[var(--success)]'
           }`}
         >
-          {getActionIcon(
-            rawAction,
-          )}
+          {actionIcon}
         </div>
 
         <div className="min-w-0 flex-1">
-
-          {/* MAIN LINE */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[9px] leading-5">
-
-              <span
-                className={`shrink-0 font-semibold ${
-                  isNegative
-                    ? 'text-[#a63a2e]'
-                    : 'text-[#2e4057]'
-                }`}
-              >
-                {action}
-              </span>
-
-              <span className="text-[#8a7f6b]">
-                ·
-              </span>
-
-              <span className="font-semibold text-[#2b2620]">
-                {itemName}
-              </span>
-            </div>
-
-            {/* TIME */}
-            <span className="shrink-0 whitespace-nowrap font-mono text-[8px] font-semibold text-[#5b5346]">
-              {timestamp}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-5">
+            <span
+              className={`font-medium ${
+                isNegative
+                  ? 'text-[var(--danger)]'
+                  : 'text-[var(--navy)]'
+              }`}
+            >
+              {action}
             </span>
-          </div>
 
-          {/* STOCK DETAILS */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[8px] leading-4">
+            <span className="text-[var(--text-soft)]">
+              ·
+            </span>
+
+            <span className="font-medium text-[var(--text)]">
+              {itemName}
+            </span>
+
+            <span className="text-[var(--text-soft)]">
+              ·
+            </span>
 
             <span
               className={
                 isNegative
-                  ? 'font-semibold text-[#a63a2e]'
-                  : 'font-semibold text-[#3d6b4f]'
+                  ? 'text-[var(--danger)]'
+                  : 'text-[var(--success)]'
               }
             >
-              {formatQuantity(
-                quantity,
-              )}{' '}
+              {quantity > 0
+                ? `+${quantity}`
+                : quantity}{' '}
               units
             </span>
 
-            <span className="text-[#8a7f6b]">
+            <span className="text-[var(--text-soft)]">
               ·
             </span>
 
-            <span className="text-[#5b5346]">
+            <span className="text-[var(--text-muted)]">
               {locationName}
-            </span>
-
-            <span className="text-[#8a7f6b]">
-              ·
-            </span>
-
-            <span className="text-[#8a7f6b]">
-              SKU {itemSku}
             </span>
           </div>
 
-          {/* ACTOR + REFERENCE */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[7px] leading-4 text-[#8a7f6b]">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] text-[var(--text-soft)]">
+            <span>
+              {timestamp}
+            </span>
 
             <span>
               BY {actor}
             </span>
 
-            <span>
-              ·
-            </span>
-
-            <span>
-              REF {reference ?? '—'}
-            </span>
+            {event.reference && (
+              <>
+                <span>·</span>
+                <span>
+                  REF {event.reference}
+                </span>
+              </>
+            )}
           </div>
-
-
         </div>
       </div>
     </div>
@@ -395,36 +425,28 @@ function ActivityRow({
 function ActivityLoading() {
   return (
     <div className="flex-1">
-      {Array.from({
-        length: PAGE_SIZE,
-      }).map((_, index) => (
-        <div
-          key={index}
-          className="flex min-h-[110px] items-center gap-4 border-b border-dashed border-[#b7a87e] px-4 py-4 last:border-b-0"
-        >
-          <div className="h-9 w-9 shrink-0 animate-pulse border border-[#b7a87e] bg-[#eae2ce]" />
+      {[0, 1, 2, 3, 4].map(
+        (index) => (
+          <div
+            key={index}
+            className="flex min-h-[86px] items-center gap-4 border-b border-[var(--border)] px-4 py-4"
+          >
+            <div className="h-9 w-9 shrink-0 animate-pulse rounded-[9px] bg-[var(--surface-soft)]" />
 
-          <div className="flex-1">
-            <div className="h-2.5 w-[65%] animate-pulse bg-[#eae2ce]" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-[72%] animate-pulse rounded bg-[var(--surface-soft)]" />
 
-            <div className="mt-2 h-2 w-[45%] animate-pulse bg-[#eae2ce]" />
-
-            <div className="mt-2 h-2 w-[55%] animate-pulse bg-[#eae2ce]" />
+              <div className="h-2.5 w-[38%] animate-pulse rounded bg-[var(--surface-soft)]" />
+            </div>
           </div>
-        </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
 
-function getActionIcon(
-  action: string,
-) {
-  switch (
-    action
-      .trim()
-      .toLowerCase()
-  ) {
+function getActionIcon(action: string) {
+  switch (action) {
     case 'receive':
       return (
         <ArrowDownToLine
@@ -450,7 +472,6 @@ function getActionIcon(
       );
 
     case 'adjustment':
-    case 'adjust':
       return (
         <ClipboardPenLine
           size={16}
@@ -458,17 +479,9 @@ function getActionIcon(
         />
       );
 
-    case 'opening_balance':
-      return (
-        <ArrowDownToLine
-          size={16}
-          strokeWidth={1.6}
-        />
-      );
-
     default:
       return (
-        <History
+        <ActivityIcon
           size={16}
           strokeWidth={1.6}
         />
@@ -479,11 +492,7 @@ function getActionIcon(
 function formatAction(
   action: string,
 ) {
-  switch (
-    action
-      .trim()
-      .toLowerCase()
-  ) {
+  switch (action) {
     case 'receive':
       return 'Received stock';
 
@@ -494,7 +503,6 @@ function formatAction(
       return 'Transferred stock';
 
     case 'adjustment':
-    case 'adjust':
       return 'Adjusted stock';
 
     case 'opening_balance':
@@ -511,20 +519,6 @@ function formatAction(
             )
         : 'Inventory activity';
   }
-}
-
-function formatQuantity(
-  quantity: number,
-) {
-  if (quantity > 0) {
-    return `+${new Intl.NumberFormat(
-      'en-NG',
-    ).format(quantity)}`;
-  }
-
-  return new Intl.NumberFormat(
-    'en-NG',
-  ).format(quantity);
 }
 
 function formatDateTime(
@@ -545,28 +539,16 @@ function formatDateTime(
     return timestamp;
   }
 
-  const day = String(
-    date.getDate(),
-  ).padStart(2, '0');
-
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, '0');
-
-  const year =
-    date.getFullYear();
-
-  const hours = String(
-    date.getHours(),
-  ).padStart(2, '0');
-
-  const minutes = String(
-    date.getMinutes(),
-  ).padStart(2, '0');
-
-  const seconds = String(
-    date.getSeconds(),
-  ).padStart(2, '0');
-
-  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  return new Intl.DateTimeFormat(
+    'en-NG',
+    {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    },
+  ).format(date);
 }

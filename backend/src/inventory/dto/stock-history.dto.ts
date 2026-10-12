@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -11,6 +12,10 @@ import { Type } from 'class-transformer';
 import { TransactionType } from '@prisma/client';
 
 export class StockHistoryDto {
+  @IsOptional()
+  @IsUUID('4')
+  locationId?: string;
+
   @IsOptional()
   @IsEnum(TransactionType)
   txnType?: TransactionType;
